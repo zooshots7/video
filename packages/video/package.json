@@ -9,7 +9,11 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@video-editor/shared": "*"
+        "@remotion/cli": "^4.0.434",
+        "@video-editor/shared": "*",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "remotion": "^4.0.434"
     },
     "devDependencies": {
         "typescript": "^5.7.0"

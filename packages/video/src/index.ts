@@ -1,7 +1,6 @@
-/**
- * @video-editor/video
- *
- * Remotion compositions and components for Video Editor.
- * This package will be fleshed out in Step 3.
- */
-export { };
+export { VideoComposition } from "./VideoComposition";
+export { HookCard } from "./components/HookCard";
+export { CTAEndCard } from "./components/CTAEndCard";
+export { Captions } from "./components/Captions";
+export { PunchInZoomLayer } from "./components/PunchInZoomLayer";
+export type { VideoCompositionProps } from "./types";

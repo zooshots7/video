@@ -1,8 +1,17 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import { Player } from "@remotion/player";
 import { getTemplateById, TEMPLATES } from "@video-editor/shared";
+import { VideoComposition } from "@video-editor/video";
+import { MOCK_TRANSCRIPT, MOCK_ZOOM_TIMESTAMPS } from "@/lib/mock-data";
+
+const SAMPLE_VIDEO_URL =
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4";
+
+const FPS = 30;
+const DURATION_SECONDS = 15;
 
 function ReviewContent() {
     const searchParams = useSearchParams();
@@ -10,6 +19,7 @@ function ReviewContent() {
     const template = getTemplateById(templateId) ?? TEMPLATES[0];
 
     const [hookText, setHookText] = useState("This will blow your mind 🤯");
+    const [ctaText] = useState(template.cta.buttonText);
     const [accentColor, setAccentColor] = useState(template.accentColor);
     const [captionIntensity, setCaptionIntensity] = useState<
         "subtle" | "default" | "bold"
@@ -22,15 +32,41 @@ function ReviewContent() {
         bold: "Bold",
     };
 
+    const captionFontScale: Record<string, number> = {
+        subtle: 0.8,
+        default: 1,
+        bold: 1.25,
+    };
+
+    // Build a modified template config with the chosen accent and intensity
+    const modifiedTemplate = useMemo(() => {
+        const scale = captionFontScale[captionIntensity];
+        return {
+            ...template,
+            accentColor,
+            caption: {
+                ...template.caption,
+                fontSize: Math.round(template.caption.fontSize * scale),
+                highlightColor: accentColor,
+            },
+            hook: {
+                ...template.hook,
+            },
+            cta: {
+                ...template.cta,
+                background: accentColor,
+            },
+        };
+    }, [template, accentColor, captionIntensity]);
+
     function handleExport() {
         setExporting(true);
-        // Simulate export
         setTimeout(() => setExporting(false), 3000);
     }
 
     return (
         <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
-            {/* Left — Preview */}
+            {/* Left — Remotion Player */}
             <div className="space-y-4">
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">
                     Review &amp; Export
@@ -40,60 +76,32 @@ function ReviewContent() {
                     <span className="font-semibold text-white">{template.name}</span>
                 </p>
 
-                {/* Preview Player (placeholder) */}
-                <div className="relative mx-auto flex aspect-[9/16] max-h-[600px] w-full max-w-[340px] items-center justify-center overflow-hidden rounded-2xl border border-surface-border bg-gradient-to-b from-surface-card to-surface">
-                    {/* Mock hook card */}
-                    <div
-                        className="absolute inset-x-0 top-0 flex items-center justify-center p-6"
-                        style={{ background: template.hook.background }}
-                    >
-                        <p
-                            className="text-center font-bold leading-tight"
-                            style={{
-                                color: template.hook.textColor,
-                                fontSize: `${template.hook.fontSize / 3}px`,
+                <div className="relative mx-auto w-full max-w-[340px]">
+                    <div className="overflow-hidden rounded-2xl border border-surface-border shadow-2xl shadow-accent/10">
+                        <Player
+                            component={VideoComposition}
+                            inputProps={{
+                                sourceVideoUrl: SAMPLE_VIDEO_URL,
+                                transcriptWords: MOCK_TRANSCRIPT,
+                                templateConfig: modifiedTemplate,
+                                hookText,
+                                ctaText,
+                                zoomTimestamps: MOCK_ZOOM_TIMESTAMPS,
+                                durationInFrames: DURATION_SECONDS * FPS,
+                                fps: FPS,
                             }}
-                        >
-                            {hookText}
-                        </p>
-                    </div>
-
-                    {/* Centre play icon */}
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 backdrop-blur-md">
-                        <svg
-                            className="ml-1 h-8 w-8 text-white/80"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path d="M8 5v14l11-7z" />
-                        </svg>
-                    </div>
-
-                    {/* Mock captions */}
-                    <div className="absolute inset-x-4 bottom-16 space-y-1 text-center">
-                        <span
-                            className="inline-block rounded-md px-2 py-0.5 text-xs font-semibold"
+                            durationInFrames={DURATION_SECONDS * FPS}
+                            compositionWidth={1080}
+                            compositionHeight={1920}
+                            fps={FPS}
                             style={{
-                                backgroundColor: template.caption.backgroundColor,
-                                color: template.caption.color,
+                                width: "100%",
+                                aspectRatio: "9 / 16",
                             }}
-                        >
-                            completely{" "}
-                            <span style={{ color: template.caption.highlightColor }}>
-                                change
-                            </span>{" "}
-                            how you create
-                        </span>
-                    </div>
-
-                    {/* Mock CTA */}
-                    <div
-                        className="absolute inset-x-0 bottom-0 flex items-center justify-center p-4"
-                        style={{ background: template.cta.background }}
-                    >
-                        <span className="text-sm font-bold text-white">
-                            {template.cta.buttonText}
-                        </span>
+                            controls
+                            autoPlay
+                            loop
+                        />
                     </div>
                 </div>
             </div>
