@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
         .from("projects")
         .insert({
             title: body.title,
+            video_url: body.videoUrl ?? null,
             template_id: body.templateId ?? null,
             hook_text: body.hookText ?? "",
             cta_text: body.ctaText ?? "",

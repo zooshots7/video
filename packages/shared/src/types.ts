@@ -59,7 +59,7 @@ export interface TemplateConfig {
     id: string;
     name: string;
     description: string;
-    thumbnail: string;
+    thumbnail?: string;
     accentColor: string;
     hook: HookConfig;
     caption: CaptionStyle;

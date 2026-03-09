@@ -4,13 +4,12 @@
 -- ============================================================
 
 -- 0. Extensions
-create extension if not exists "uuid-ossp";
 
 -- ============================================================
 -- 1. TEMPLATES  (editing style presets)
 -- ============================================================
 create table public.templates (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   slug          text unique not null,
   name          text not null,
   description   text,
@@ -30,7 +29,7 @@ create table public.templates (
 -- 2. VIDEO TEMPLATES  (pre-made composition blueprints)
 -- ============================================================
 create table public.video_templates (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   slug          text unique not null,
   name          text not null,
   description   text,
@@ -49,7 +48,7 @@ create table public.video_templates (
 -- 3. ASSET CATEGORIES
 -- ============================================================
 create table public.asset_categories (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   slug          text unique not null,
   name          text not null,
   asset_type    text not null check (asset_type in ('vfx','sfx','broll','music')),
@@ -61,7 +60,7 @@ create table public.asset_categories (
 -- 4. VFX PRESETS
 -- ============================================================
 create table public.vfx_presets (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   slug          text unique not null,
   name          text not null,
   description   text,
@@ -82,7 +81,7 @@ create table public.vfx_presets (
 -- 5. SFX CLIPS
 -- ============================================================
 create table public.sfx_clips (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   slug          text unique not null,
   name          text not null,
   description   text,
@@ -103,7 +102,7 @@ create table public.sfx_clips (
 -- 6. B-ROLL CLIPS
 -- ============================================================
 create table public.broll_clips (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   slug          text unique not null,
   name          text not null,
   description   text,
@@ -123,7 +122,7 @@ create table public.broll_clips (
 -- 7. MUSIC TRACKS
 -- ============================================================
 create table public.music_tracks (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   slug          text unique not null,
   name          text not null,
   artist        text,
@@ -148,13 +147,13 @@ create table public.music_tracks (
 -- 8. ASSET TAGS
 -- ============================================================
 create table public.asset_tags (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   slug          text unique not null,
   name          text not null
 );
 
 create table public.asset_tag_map (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   tag_id        uuid not null references public.asset_tags(id) on delete cascade,
   asset_type    text not null check (asset_type in ('vfx','sfx','broll','music','template','video_template')),
   asset_id      uuid not null,
@@ -167,7 +166,7 @@ create index idx_tag_map_asset on public.asset_tag_map(asset_type, asset_id);
 -- 9. PROJECTS
 -- ============================================================
 create table public.projects (
-  id             uuid primary key default uuid_generate_v4(),
+  id             uuid primary key default gen_random_uuid(),
   title          text not null,
   status         text not null default 'draft' check (status in ('draft','processing','done','failed')),
   video_url      text,
@@ -186,7 +185,7 @@ create table public.projects (
 -- 10. TRANSCRIPTS & WORDS
 -- ============================================================
 create table public.transcripts (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   project_id    uuid unique not null references public.projects(id) on delete cascade,
   full_text     text,
   language      text not null default 'en',
@@ -195,7 +194,7 @@ create table public.transcripts (
 );
 
 create table public.transcript_words (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   transcript_id uuid not null references public.transcripts(id) on delete cascade,
   word          text not null,
   start_sec     numeric not null,
@@ -211,7 +210,7 @@ create index idx_tw_transcript on public.transcript_words(transcript_id, sort_or
 -- 11. PROJECT ASSETS
 -- ============================================================
 create table public.project_assets (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   project_id    uuid not null references public.projects(id) on delete cascade,
   asset_type    text not null check (asset_type in ('vfx','sfx','broll','music')),
   asset_id      uuid not null,
@@ -228,7 +227,7 @@ create index idx_pa_project on public.project_assets(project_id);
 -- 12. RENDER JOBS
 -- ============================================================
 create table public.render_jobs (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   project_id    uuid not null references public.projects(id) on delete cascade,
   status        text not null default 'queued' check (status in ('queued','rendering','done','failed')),
   progress      int not null default 0 check (progress between 0 and 100),
