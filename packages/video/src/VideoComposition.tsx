@@ -114,7 +114,7 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
             })}
 
             {/* VFX Overlays */}
-            {vfxAssets.map((vfx, i) => {
+            {(templateConfig.vfxEnabled !== false) && vfxAssets.map((vfx, i) => {
                 const config = (vfx.config ?? {}) as Record<string, any>;
                 const startFrame = Math.round((vfx.startSec ?? 0) * fps);
                 const durationFrames = Math.round(
@@ -177,7 +177,7 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
             />
 
             {/* SFX Audio Layers */}
-            {sfxAssets.map((sfx, i) => {
+            {(templateConfig.sfxEnabled !== false) && sfxAssets.map((sfx, i) => {
                 if (!sfx.fileUrl) return null;
                 const startFrame = Math.round((sfx.startSec ?? 0) * fps);
                 return (

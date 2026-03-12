@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Player } from "@remotion/player";
+import { getVideoMetadata } from "@remotion/media-utils";
 import { TEMPLATES, getTemplateById } from "@video-editor/shared";
 import type { TranscriptWord } from "@video-editor/shared";
 import { VideoComposition } from "@video-editor/video";
@@ -25,6 +26,7 @@ interface ProjectData {
     title: string;
     video_url: string | null;
     signed_video_url?: string | null;
+    duration_sec?: number | null;
     hook_text: string;
     cta_text: string;
     accent_color: string;
@@ -49,16 +51,26 @@ function ReviewContent() {
     const [project, setProject] = useState<ProjectData | null>(null);
     const [transcriptWords, setTranscriptWords] = useState<TranscriptWord[]>(MOCK_TRANSCRIPT);
     const [loading, setLoading] = useState(!!projectId);
+    
+    // Config state
+    const [title, setTitle] = useState("My Awesome Video");
+    const [selectedTemplateId, setSelectedTemplateId] = useState(templateParam ?? TEMPLATES[0].id);
     const [hookText, setHookText] = useState("This will blow your mind 🤯");
     const [ctaText, setCtaText] = useState("Follow for more");
     const [accentColor, setAccentColor] = useState("#6366F1");
     const [captionIntensity, setCaptionIntensity] = useState<"subtle" | "default" | "bold">("default");
+    const [captionFont, setCaptionFont] = useState("Inter");
+    const [vfxEnabled, setVfxEnabled] = useState(true);
+    const [sfxEnabled, setSfxEnabled] = useState(true);
+    
     const [compositionAssets, setCompositionAssets] = useState<ProjectAssetInput[]>([]);
     const [exporting, setExporting] = useState(false);
     const [renderProgress, setRenderProgress] = useState(0);
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
     const [renderError, setRenderError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    
+    const [dynamicDurationSec, setDynamicDurationSec] = useState(DURATION_SECONDS);
 
     // Load project from DB
     useEffect(() => {
@@ -69,9 +81,28 @@ function ReviewContent() {
                 const data = await res.json();
                 if (data.ok && data.project) {
                     setProject(data.project);
+                    if (data.project.title) setTitle(data.project.title);
+                    if (data.project.template_id) setSelectedTemplateId(data.project.template_id);
                     if (data.project.hook_text) setHookText(data.project.hook_text);
                     if (data.project.cta_text) setCtaText(data.project.cta_text);
                     if (data.project.accent_color) setAccentColor(data.project.accent_color);
+                    
+                    if (data.project.config) {
+                         const cfg = data.project.config;
+                         if (cfg.vfxEnabled !== undefined) setVfxEnabled(cfg.vfxEnabled);
+                         if (cfg.sfxEnabled !== undefined) setSfxEnabled(cfg.sfxEnabled);
+                         if (cfg.captionFont) setCaptionFont(cfg.captionFont);
+                         if (cfg.captionIntensity) setCaptionIntensity(cfg.captionIntensity);
+                    }
+                    
+                    if (data.project.duration_sec) {
+                        setDynamicDurationSec(data.project.duration_sec);
+                    } else if (data.project.video_url || data.project.signed_video_url) {
+                         // Fallback to fetching it in the browser if DB doesn't have it yet
+                         getVideoMetadata(data.project.signed_video_url || data.project.video_url)
+                            .then(meta => setDynamicDurationSec(meta.durationInSeconds))
+                            .catch(err => console.warn("Could not get video meta", err));
+                    }
                 }
                 // Load transcript words if available
                 if (data.transcript?.transcript_words?.length) {
@@ -108,10 +139,10 @@ function ReviewContent() {
                 cta: t.cta_config as any,
             };
         }
-        // Fallback to URL param or first template
-        const slug = templateParam ?? TEMPLATES[0].id;
+        // Fallback to URL param or local state
+        const slug = selectedTemplateId;
         return getTemplateById(slug) ?? TEMPLATES[0];
-    }, [project, templateParam]);
+    }, [project, selectedTemplateId]);
 
     const intensityLabel: Record<string, string> = { subtle: "Subtle", default: "Default", bold: "Bold" };
     const captionFontScale: Record<string, number> = { subtle: 0.8, default: 1, bold: 1.25 };
@@ -121,8 +152,11 @@ function ReviewContent() {
         return {
             ...templateConfig,
             accentColor,
+            vfxEnabled,
+            sfxEnabled,
             caption: {
                 ...templateConfig.caption,
+                fontFamily: captionFont,
                 fontSize: Math.round(templateConfig.caption.fontSize * scale),
                 highlightColor: accentColor,
             },
@@ -131,7 +165,7 @@ function ReviewContent() {
                 background: accentColor,
             },
         };
-    }, [templateConfig, accentColor, captionIntensity]);
+    }, [templateConfig, accentColor, captionIntensity, captionFont, vfxEnabled, sfxEnabled]);
 
     // Use signed URL (for private bucket) or fall back to public URL or sample
     const videoUrl = project?.signed_video_url || project?.video_url || SAMPLE_VIDEO_URL;
@@ -144,9 +178,17 @@ function ReviewContent() {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    title,
+                    templateId: selectedTemplateId,
                     hookText,
                     ctaText,
                     accentColor,
+                    config: {
+                        vfxEnabled,
+                        sfxEnabled,
+                        captionFont,
+                        captionIntensity
+                    }
                 }),
             });
         } finally {
@@ -169,7 +211,7 @@ function ReviewContent() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     projectId,
-                    templateId: project?.template_id ?? templateConfig.id,
+                    templateId: selectedTemplateId,
                 }),
             });
             const data = await res.json();
@@ -240,11 +282,11 @@ function ReviewContent() {
                                 hookText,
                                 ctaText,
                                 zoomTimestamps: MOCK_ZOOM_TIMESTAMPS,
-                                durationInFrames: DURATION_SECONDS * FPS,
+                                durationInFrames: Math.floor(dynamicDurationSec * FPS),
                                 fps: FPS,
                                 projectAssets: compositionAssets,
                             }}
-                            durationInFrames={DURATION_SECONDS * FPS}
+                            durationInFrames={Math.floor(dynamicDurationSec * FPS)}
                             compositionWidth={1080}
                             compositionHeight={1920}
                             fps={FPS}
@@ -262,6 +304,33 @@ function ReviewContent() {
             <div className="space-y-6">
                 <div className="glass-card space-y-6 p-6">
                     <h2 className="text-lg font-bold text-white">Customise</h2>
+
+                    {/* Title */}
+                    <div className="space-y-2">
+                        <label htmlFor="title" className="text-sm font-medium text-slate-300">Video Title</label>
+                        <input
+                            id="title"
+                            type="text"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            className="w-full rounded-lg border border-surface-border bg-surface px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/40"
+                        />
+                    </div>
+
+                    {/* Template Style */}
+                    <div className="space-y-2">
+                        <label htmlFor="template" className="text-sm font-medium text-slate-300">Video Style</label>
+                        <select
+                            id="template"
+                            value={selectedTemplateId}
+                            onChange={(e) => setSelectedTemplateId(e.target.value)}
+                            className="w-full rounded-lg border border-surface-border bg-surface px-4 py-3 text-sm text-white outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/40"
+                        >
+                            {TEMPLATES.map((t) => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                        </select>
+                    </div>
 
                     {/* Hook Text */}
                     <div className="space-y-2">
@@ -312,8 +381,8 @@ function ReviewContent() {
 
                     {/* Caption Intensity */}
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-300">Caption Intensity</label>
-                        <div className="flex gap-2">
+                        <label className="text-sm font-medium text-slate-300">Caption Style</label>
+                        <div className="flex gap-2 mb-3">
                             {(["subtle", "default", "bold"] as const).map((level) => (
                                 <button
                                     key={level}
@@ -325,6 +394,34 @@ function ReviewContent() {
                                 </button>
                             ))}
                         </div>
+                        <select
+                            value={captionFont}
+                            onChange={(e) => setCaptionFont(e.target.value)}
+                            className="w-full rounded-lg border border-surface-border bg-surface px-4 py-3 text-sm text-white outline-none transition-colors focus:border-accent"
+                        >
+                            <option value="Inter">Inter (Clean)</option>
+                            <option value="Luckiest Guy">Luckiest Guy (Bold)</option>
+                            <option value="Oswald">Oswald (Tall)</option>
+                            <option value="Montserrat">Montserrat (Modern)</option>
+                        </select>
+                    </div>
+
+                    {/* VFX & SFX Toggles */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <label className="flex items-center justify-between rounded-lg border border-surface-border bg-surface px-4 py-3 cursor-pointer hover:border-accent/40 transition-colors">
+                            <span className="text-sm font-medium text-slate-300">Effects (VFX)</span>
+                            <div className={`relative h-6 w-11 rounded-full transition-colors ${vfxEnabled ? 'bg-accent' : 'bg-surface-border'}`}>
+                                <input type="checkbox" checked={vfxEnabled} onChange={(e) => setVfxEnabled(e.target.checked)} className="sr-only" />
+                                <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white transition-transform ${vfxEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </div>
+                        </label>
+                        <label className="flex items-center justify-between rounded-lg border border-surface-border bg-surface px-4 py-3 cursor-pointer hover:border-accent/40 transition-colors">
+                            <span className="text-sm font-medium text-slate-300">Sounds (SFX)</span>
+                            <div className={`relative h-6 w-11 rounded-full transition-colors ${sfxEnabled ? 'bg-accent' : 'bg-surface-border'}`}>
+                                <input type="checkbox" checked={sfxEnabled} onChange={(e) => setSfxEnabled(e.target.checked)} className="sr-only" />
+                                <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white transition-transform ${sfxEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </div>
+                        </label>
                     </div>
                 </div>
 

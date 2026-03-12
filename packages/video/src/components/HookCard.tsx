@@ -36,9 +36,9 @@ export const HookCard: React.FC<HookCardProps> = ({ hookText, config }) => {
     return (
         <AbsoluteFill
             style={{
-                backgroundColor: config.background,
-                justifyContent: "center",
+                justifyContent: "flex-start",
                 alignItems: "center",
+                paddingTop: 160,
                 opacity,
                 zIndex: 20,
             }}
@@ -46,8 +46,12 @@ export const HookCard: React.FC<HookCardProps> = ({ hookText, config }) => {
             <div
                 style={{
                     transform: `scale(${scale})`,
-                    padding: "0 80px",
+                    padding: "24px 48px",
                     textAlign: "center",
+                    backgroundColor: config.background,
+                    borderRadius: 32,
+                    boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+                    border: "4px solid rgba(255,255,255,0.1)",
                 }}
             >
                 <div
@@ -55,9 +59,10 @@ export const HookCard: React.FC<HookCardProps> = ({ hookText, config }) => {
                         color: config.textColor,
                         fontSize: config.fontSize,
                         fontFamily: "Inter, system-ui, sans-serif",
-                        fontWeight: 800,
-                        lineHeight: 1.2,
-                        textShadow: "0 4px 30px rgba(0,0,0,0.5)",
+                        fontWeight: 900,
+                        lineHeight: 1.1,
+                        textTransform: "uppercase",
+                        letterSpacing: "-0.03em",
                     }}
                 >
                     {hookText}

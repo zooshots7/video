@@ -5,6 +5,10 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { writeFile, unlink } from "fs/promises";
 import fs from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 /**
  * Transcribe a project's video using Deepgram Nova-2.
@@ -153,14 +157,18 @@ async function transcribeWithOpenAI(
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const tempFilePath = join(tmpdir(), `upload-${Date.now()}.mp4`);
+    const tempVideoPath = join(tmpdir(), `upload-${Date.now()}.mp4`);
+    const tempAudioPath = join(tmpdir(), `audio-${Date.now()}.mp3`);
     
-    await writeFile(tempFilePath, buffer);
+    await writeFile(tempVideoPath, buffer);
 
     try {
-        console.log("[transcribe] Sending to OpenAI Whisper...");
+        console.log("[transcribe] Extracting audio to bypass OpenAI 25MB limit...");
+        await execAsync(`ffmpeg -y -i "${tempVideoPath}" -vn -acodec libmp3lame -q:a 5 "${tempAudioPath}"`);
+
+        console.log("[transcribe] Sending audio to OpenAI Whisper...");
         const transcription = await openai.audio.transcriptions.create({
-            file: fs.createReadStream(tempFilePath),
+            file: fs.createReadStream(tempAudioPath),
             model: "whisper-1",
             response_format: "verbose_json",
             timestamp_granularities: ["word"],
@@ -170,7 +178,7 @@ async function transcribeWithOpenAI(
             word: w.word,
             start: w.start,
             end: w.end,
-            confidence: 1.0, // Whisper doesn't return confidence currently
+            confidence: 1.0, 
         }));
 
         return {
@@ -178,8 +186,9 @@ async function transcribeWithOpenAI(
             fullText: transcription.text,
         };
     } finally {
-        // Clean up the temp file
-        await unlink(tempFilePath).catch(console.error);
+        // Clean up the temp files
+        await unlink(tempVideoPath).catch(console.error);
+        await unlink(tempAudioPath).catch(console.error);
     }
 }
 

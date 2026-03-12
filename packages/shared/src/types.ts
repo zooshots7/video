@@ -61,6 +61,8 @@ export interface TemplateConfig {
     description: string;
     thumbnail?: string;
     accentColor: string;
+    vfxEnabled?: boolean;
+    sfxEnabled?: boolean;
     hook: HookConfig;
     caption: CaptionStyle;
     zoom: ZoomConfig;

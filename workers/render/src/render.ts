@@ -1,6 +1,7 @@
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
+import { getVideoMetadata } from "@remotion/media-utils";
 import path from "path";
 import os from "os";
 import fs from "fs";
@@ -27,6 +28,21 @@ export async function processRenderJob(jobId: string) {
 
         const projectId = job.project_id;
         
+        let actualDurationSec = job.project.duration_sec;
+        if (!actualDurationSec) {
+             try {
+                 const metadata = await getVideoMetadata(job.project.video_url);
+                 actualDurationSec = metadata.durationInSeconds;
+                 // Update the project with the real duration
+                 await supabase.from("projects").update({ duration_sec: actualDurationSec }).eq("id", projectId);
+             } catch (err) {
+                 console.warn(`[render] Could not fetch video metadata exactly, using 30s.`, err);
+                 actualDurationSec = 30;
+             }
+        }
+        
+        const durationInFrames = Math.floor(actualDurationSec * 30);
+
         // Fetch all assets
         const { data: projectAssets } = await supabase
             .from("project_assets")
@@ -52,7 +68,7 @@ export async function processRenderJob(jobId: string) {
             hookText: job.project.hook_text,
             ctaText: job.project.cta_text,
             zoomTimestamps: [], // Simplified for now
-            durationInFrames: Math.floor((job.project.duration_sec || 30) * 30),
+            durationInFrames,
             fps: 30,
             projectAssets: projectAssets?.map(a => ({
                 assetType: a.asset_type,
@@ -67,16 +83,16 @@ export async function processRenderJob(jobId: string) {
         // 3. Bundle Remotion project
         const bundledDir = await bundle({
             // Path to the Remotion root in packages/video
-            entryPoint: path.resolve(__dirname, "../../../packages/video/src/index.ts"),
+            entryPoint: path.resolve(__dirname, "../../../packages/video/src/root.tsx"),
             webpackOverride: (config) => config,
         });
 
         await updateProgress(jobId, 50, "extracting composition");
 
-        // 4. Select the composition (MainProject)
+        // 4. Select the composition (VideoEditor)
         const composition = await selectComposition({
             serveUrl: bundledDir,
-            id: "MainProject",
+            id: "VideoEditor",
             inputProps,
         });
 
@@ -85,7 +101,10 @@ export async function processRenderJob(jobId: string) {
         // 5. Render
         const outputLocation = path.join(os.tmpdir(), `render-${jobId}.mp4`);
         await renderMedia({
-            composition,
+            composition: {
+                ...composition,
+                durationInFrames,
+            },
             serveUrl: bundledDir,
             codec: "h264",
             outputLocation,
@@ -153,10 +172,19 @@ async function updateProgress(jobId: string, progress: number, message: string) 
 
 // Temporary stub since we don't have direct access to shared package templates in the isolated worker
 function getTemplateConfig(project: any) {
+    const config = project.config || {};
+    
+    // Reverse engineer intensity scaling (approximate based on frontend)
+    let fontSize = 42;
+    if (config.captionIntensity === "subtle") fontSize = Math.round(42 * 0.8);
+    if (config.captionIntensity === "bold") fontSize = Math.round(42 * 1.25);
+
     return {
-        id: "custom",
+        id: project.template_id || "custom",
         name: "Custom Template",
         accentColor: project.accent_color || "#6366F1",
+        vfxEnabled: config.vfxEnabled ?? true,
+        sfxEnabled: config.sfxEnabled ?? true,
         hook: {
             durationSec: 2,
             background: "#0F172A",
@@ -164,8 +192,8 @@ function getTemplateConfig(project: any) {
             fontSize: 64,
         },
         caption: {
-            fontFamily: "Inter",
-            fontSize: 42,
+            fontFamily: config.captionFont || "Inter",
+            fontSize: fontSize,
             color: "#FFFFFF",
             backgroundColor: "rgba(0,0,0,0.5)",
             highlightColor: project.accent_color || "#6366F1",

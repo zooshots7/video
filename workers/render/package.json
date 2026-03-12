@@ -10,6 +10,7 @@
     },
     "dependencies": {
         "@remotion/bundler": "^4.0.434",
+        "@remotion/media-utils": "^4.0.434",
         "@remotion/renderer": "^4.0.434",
         "@supabase/supabase-js": "^2.99.1",
         "@video-editor/shared": "*",

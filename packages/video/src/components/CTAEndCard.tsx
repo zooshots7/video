@@ -51,7 +51,8 @@ export const CTAEndCard: React.FC<CTAEndCardProps> = ({
     return (
         <AbsoluteFill
             style={{
-                backgroundColor: config.background,
+                backgroundColor: "rgba(0,0,0,0.7)",
+                backdropFilter: "blur(12px)",
                 justifyContent: "center",
                 alignItems: "center",
                 opacity,
@@ -62,7 +63,14 @@ export const CTAEndCard: React.FC<CTAEndCardProps> = ({
                 style={{
                     transform: `translateY(${slideUp}px)`,
                     textAlign: "center",
-                    padding: "0 60px",
+                    padding: "80px",
+                    backgroundColor: config.background,
+                    borderRadius: 48,
+                    boxShadow: "0 30px 60px rgba(0,0,0,0.6)",
+                    border: `4px solid ${config.textColor}33`,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
                 }}
             >
                 <div
@@ -70,9 +78,12 @@ export const CTAEndCard: React.FC<CTAEndCardProps> = ({
                         color: config.textColor,
                         fontSize: config.fontSize,
                         fontFamily: "Inter, system-ui, sans-serif",
-                        fontWeight: 800,
-                        lineHeight: 1.3,
-                        marginBottom: 40,
+                        fontWeight: 900,
+                        lineHeight: 1.2,
+                        marginBottom: 48,
+                        textTransform: "uppercase",
+                        letterSpacing: "-0.02em",
+                        maxWidth: 800,
                     }}
                 >
                     {ctaText}
@@ -81,19 +92,20 @@ export const CTAEndCard: React.FC<CTAEndCardProps> = ({
                     style={{
                         display: "inline-block",
                         transform: `scale(${buttonScale})`,
-                        padding: "20px 60px",
-                        borderRadius: 16,
-                        backgroundColor: "rgba(255,255,255,0.2)",
-                        backdropFilter: "blur(10px)",
-                        border: "2px solid rgba(255,255,255,0.3)",
+                        padding: "24px 80px",
+                        borderRadius: 100,
+                        backgroundColor: config.textColor,
+                        boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
                     }}
                 >
                     <span
                         style={{
-                            color: "#fff",
-                            fontSize: 36,
+                            color: config.background,
+                            fontSize: 40,
                             fontFamily: "Inter, system-ui, sans-serif",
-                            fontWeight: 700,
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "-0.01em",
                         }}
                     >
                         {config.buttonText}

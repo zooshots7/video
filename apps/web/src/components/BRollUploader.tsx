@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/Toast";
-import { createBrowserClient } from "@/lib/supabase";
+import { createClientSupabase } from "@/lib/supabase-browser";
 
 interface BRollUploaderProps {
     projectId: string;
@@ -45,7 +45,7 @@ export function BRollUploader({ projectId, onUploadComplete }: BRollUploaderProp
             setProgress(60);
 
             // 2. Save to broll_clips
-            const supabase = createBrowserClient();
+            const supabase = createClientSupabase();
             
             const brollId = crypto.randomUUID();
             

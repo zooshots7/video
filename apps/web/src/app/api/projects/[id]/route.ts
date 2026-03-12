@@ -92,6 +92,7 @@ export async function PATCH(
     if (body.accentColor !== undefined) update.accent_color = body.accentColor;
     if (body.status !== undefined) update.status = body.status;
     if (body.title !== undefined) update.title = body.title;
+    if (body.config !== undefined) update.config = body.config;
 
     if (Object.keys(update).length === 0) {
         return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
