@@ -65,6 +65,7 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
     const sfxAssets = projectAssets.filter((a) => a.assetType === "sfx");
     const musicAssets = projectAssets.filter((a) => a.assetType === "music");
     const vfxAssets = projectAssets.filter((a) => a.assetType === "vfx");
+    const brollAssets = projectAssets.filter((a) => a.assetType === "broll");
 
     return (
         <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -84,6 +85,33 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
                     />
                 </AbsoluteFill>
             </PunchInZoomLayer>
+
+            {/* B-Roll Overlays */}
+            {brollAssets.map((broll, i) => {
+                if (!broll.fileUrl) return null;
+                const startFrame = Math.round((broll.startSec ?? 0) * fps);
+                const endFrame = broll.endSec ? Math.round(broll.endSec * fps) : durationInFrames;
+                const durationFrames = endFrame - startFrame;
+
+                return (
+                    <Sequence
+                        key={`broll-${i}`}
+                        from={startFrame}
+                        durationInFrames={durationFrames}
+                    >
+                        <AbsoluteFill style={{ zIndex: 10 }}>
+                            <Video
+                                src={broll.fileUrl}
+                                style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                }}
+                            />
+                        </AbsoluteFill>
+                    </Sequence>
+                );
+            })}
 
             {/* VFX Overlays */}
             {vfxAssets.map((vfx, i) => {

@@ -9,6 +9,7 @@ import { VideoComposition } from "@video-editor/video";
 import type { ProjectAssetInput } from "@video-editor/video";
 import { MOCK_TRANSCRIPT, MOCK_ZOOM_TIMESTAMPS } from "@/lib/mock-data";
 import { AssetBrowser } from "@/components/AssetBrowser";
+import { BRollUploader } from "@/components/BRollUploader";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const VideoComp = VideoComposition as any;
@@ -327,9 +328,27 @@ function ReviewContent() {
                     </div>
                 </div>
 
-                {/* Asset Library */}
+                {/* Asset Library & B-Roll Uploader */}
                 {projectId && (
-                    <AssetBrowser projectId={projectId} />
+                    <div className="space-y-6">
+                        <BRollUploader 
+                            projectId={projectId} 
+                            onUploadComplete={(broll) => {
+                                // Add to timeline preview instantly
+                                setCompositionAssets(prev => [
+                                    ...prev,
+                                    {
+                                        assetType: "broll",
+                                        name: broll.name,
+                                        fileUrl: broll.file_url,
+                                        startSec: 0,
+                                        endSec: 5,
+                                    }
+                                ]);
+                            }} 
+                        />
+                        <AssetBrowser projectId={projectId} />
+                    </div>
                 )}
 
                 {/* Buttons */}

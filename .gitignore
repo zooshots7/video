@@ -19,6 +19,7 @@ out/
 .idea/
 *.swp
 *.swo
+*.log
 
 # OS
 .DS_Store

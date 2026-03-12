@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
+import OpenAI from "openai";
+import { tmpdir } from "os";
+import { join } from "path";
+import { writeFile, unlink } from "fs/promises";
+import fs from "fs";
 
 /**
  * Transcribe a project's video using Deepgram Nova-2.
@@ -49,23 +54,23 @@ export async function POST(request: NextRequest) {
         });
     }
 
-    // 3. Transcribe using Deepgram or fall back to mock
-    const deepgramKey = process.env.DEEPGRAM_API_KEY;
-    let words: { word: string; start: number; end: number; confidence: number }[];
-    let fullText: string;
-    let source: string;
+    // 3. Transcribe using OpenAI or fall back to mock
+    const openaiKey = process.env.OPENAI_API_KEY;
+    let words: { word: string; start: number; end: number; confidence: number }[] = [];
+    let fullText = "";
+    let source = "manual";
 
-    if (deepgramKey && project.video_url) {
+    if (openaiKey && project.video_url) {
         try {
-            const result = await transcribeWithDeepgram(
+            const result = await transcribeWithOpenAI(
                 project.video_url,
-                deepgramKey
+                openaiKey
             );
             words = result.words;
             fullText = result.fullText;
-            source = "deepgram";
+            source = "whisper";
         } catch (err: any) {
-            console.error("[transcribe] Deepgram error:", err.message);
+            console.error("[transcribe] OpenAI error:", err.message);
             // Fall back to mock on failure
             const mock = getMockTranscription();
             words = mock.words;
@@ -131,50 +136,51 @@ export async function POST(request: NextRequest) {
     });
 }
 
-/* ── Deepgram Integration ───────────────────── */
+/* ── OpenAI Integration ───────────────────── */
 
-async function transcribeWithDeepgram(
+async function transcribeWithOpenAI(
     videoUrl: string,
     apiKey: string
 ): Promise<{ words: { word: string; start: number; end: number; confidence: number }[]; fullText: string }> {
-    const response = await fetch(
-        "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&utterances=false&language=en",
-        {
-            method: "POST",
-            headers: {
-                Authorization: `Token ${apiKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ url: videoUrl }),
-        }
-    );
+    const openai = new OpenAI({ apiKey });
 
+    // Download the video file to a temporary location
+    console.log("[transcribe] Downloading video from:", videoUrl);
+    const response = await fetch(videoUrl);
     if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Deepgram API error ${response.status}: ${errText}`);
+        throw new Error(`Failed to fetch video: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    const channel = data.results?.channels?.[0];
-    const alternative = channel?.alternatives?.[0];
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const tempFilePath = join(tmpdir(), `upload-${Date.now()}.mp4`);
+    
+    await writeFile(tempFilePath, buffer);
 
-    if (!alternative) {
-        throw new Error("No transcription results returned");
-    }
+    try {
+        console.log("[transcribe] Sending to OpenAI Whisper...");
+        const transcription = await openai.audio.transcriptions.create({
+            file: fs.createReadStream(tempFilePath),
+            model: "whisper-1",
+            response_format: "verbose_json",
+            timestamp_granularities: ["word"],
+        });
 
-    const words = (alternative.words ?? []).map(
-        (w: { word: string; start: number; end: number; confidence: number }) => ({
+        const words = (transcription.words ?? []).map((w: any) => ({
             word: w.word,
             start: w.start,
             end: w.end,
-            confidence: w.confidence,
-        })
-    );
+            confidence: 1.0, // Whisper doesn't return confidence currently
+        }));
 
-    return {
-        words,
-        fullText: alternative.transcript ?? "",
-    };
+        return {
+            words,
+            fullText: transcription.text,
+        };
+    } finally {
+        // Clean up the temp file
+        await unlink(tempFilePath).catch(console.error);
+    }
 }
 
 /* ── Mock Transcription Fallback ─────────────── */

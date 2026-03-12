@@ -9,7 +9,11 @@
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "@video-editor/shared": "*"
+        "@remotion/bundler": "^4.0.434",
+        "@remotion/renderer": "^4.0.434",
+        "@supabase/supabase-js": "^2.99.1",
+        "@video-editor/shared": "*",
+        "dotenv": "^17.3.1"
     },
     "devDependencies": {
         "typescript": "^5.7.0"
