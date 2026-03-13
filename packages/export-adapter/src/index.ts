@@ -1,2 +1,1 @@
-// Export Adapter Entry
-export {};
+export { RemotionComposition } from './RemotionComposition';

@@ -12,6 +12,9 @@
         "typescript": "^5.7.0"
     },
     "dependencies": {
-        "@video-editor/timeline-schema": "*"
+        "@types/react": "^18.3.28",
+        "@video-editor/timeline-schema": "*",
+        "react": "^18.3.1",
+        "remotion": "^4.0.434"
     }
 }

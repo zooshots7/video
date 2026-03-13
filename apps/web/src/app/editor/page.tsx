@@ -10,6 +10,29 @@ export default function EditorPage() {
   const { setProject, project, isPlaying, setIsPlaying, setPlayhead, playheadMs } = useEditorStore();
   const lastTimeRef = useRef<number>(0);
   const frameRef = useRef<number>(0);
+  const [isExporting, setIsExporting] = React.useState(false);
+
+  const handleExport = async () => {
+    if (!project) return;
+    setIsExporting(true);
+    try {
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project)
+      });
+      const data = await res.json();
+      if (data.success) {
+         alert(`Render Job Queued! Job ID: ${data.jobId}`);
+      } else {
+         alert(`Export Failed: ${data.error}`);
+      }
+    } catch (err) {
+      alert('Network error while exporting.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   useEffect(() => {
     // Inject mock project data on mount for testing MVP
@@ -107,8 +130,12 @@ export default function EditorPage() {
           <button className="rounded px-3 py-1.5 text-xs font-medium text-stone-300 hover:bg-stone-800 transition-colors">
             Share
           </button>
-          <button className="rounded bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors">
-            Export
+          <button 
+             onClick={handleExport}
+             disabled={isExporting}
+             className="rounded bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isExporting ? 'Exporting...' : 'Export'}
           </button>
         </div>
       </header>
