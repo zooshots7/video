@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo } from "react";
+import { useState, useEffect, Suspense, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Player } from "@remotion/player";
+import type { PlayerRef } from "@remotion/player";
 import { TEMPLATES, getTemplateById } from "@video-editor/shared";
 import type { TranscriptWord } from "@video-editor/shared";
 import { VideoComposition } from "@video-editor/video";
 import type { ProjectAssetInput } from "@video-editor/video";
 import { MOCK_TRANSCRIPT, MOCK_ZOOM_TIMESTAMPS } from "@/lib/mock-data";
 import { AssetBrowser } from "@/components/AssetBrowser";
+import { VideoTimeline } from "@/components/VideoTimeline";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const VideoComp = VideoComposition as any;
@@ -44,6 +46,8 @@ function ReviewContent() {
     const searchParams = useSearchParams();
     const projectId = searchParams.get("project");
     const templateParam = searchParams.get("template");
+
+    const playerRef = useRef<PlayerRef>(null);
 
     const [project, setProject] = useState<ProjectData | null>(null);
     const [transcriptWords, setTranscriptWords] = useState<TranscriptWord[]>(MOCK_TRANSCRIPT);
@@ -214,7 +218,8 @@ function ReviewContent() {
     }
 
     return (
-        <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
+        <div className="space-y-8">
+            <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
             {/* Left — Remotion Player */}
             <div className="space-y-4">
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">
@@ -231,6 +236,7 @@ function ReviewContent() {
                 <div className="relative mx-auto w-full max-w-[340px]">
                     <div className="overflow-hidden rounded-2xl border border-surface-border shadow-2xl shadow-accent/10">
                         <Player
+                            ref={playerRef}
                             component={VideoComp}
                             inputProps={{
                                 sourceVideoUrl: videoUrl,
@@ -406,6 +412,21 @@ function ReviewContent() {
                 </div>
             </div>
         </div>
+
+        {/* Bottom - Timeline */}
+        <div className="w-full">
+            <VideoTimeline
+                playerRef={playerRef}
+                transcriptWords={transcriptWords}
+                zoomTimestamps={MOCK_ZOOM_TIMESTAMPS}
+                durationInFrames={DURATION_SECONDS * FPS}
+                fps={FPS}
+                hookText={hookText}
+                ctaText={ctaText}
+                templateConfig={modifiedTemplate}
+            />
+        </div>
+    </div>
     );
 }
 
