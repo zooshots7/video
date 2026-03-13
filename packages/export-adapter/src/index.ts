@@ -1,0 +1,2 @@
+// Export Adapter Entry
+export {};
