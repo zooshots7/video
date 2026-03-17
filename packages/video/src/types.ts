@@ -1,15 +1,14 @@
-import type { TranscriptWord, TemplateConfig } from "@video-editor/shared";
+import type { EditorProject } from "@video-editor/timeline-schema";
+import type { TemplateConfig, TranscriptWord } from "@video-editor/shared";
 
-export interface ProjectAssetInput {
-    assetType: "vfx" | "sfx" | "broll" | "music";
-    fileUrl?: string;
-    name: string;
-    config?: Record<string, unknown>;
-    startSec?: number;
-    endSec?: number;
-    durationMs?: number;
-}
+export type EditorProjectCompositionProps = {
+    project: EditorProject;
+};
 
+/**
+ * Legacy prop bag retained for compatibility with older adapter code.
+ * The canonical composition now receives `{ project }` only.
+ */
 export interface VideoCompositionProps {
     sourceVideoUrl: string;
     transcriptWords: TranscriptWord[];
@@ -22,3 +21,12 @@ export interface VideoCompositionProps {
     projectAssets?: ProjectAssetInput[];
 }
 
+export interface ProjectAssetInput {
+    assetType: "vfx" | "sfx" | "broll" | "music";
+    fileUrl?: string;
+    name: string;
+    config?: Record<string, unknown>;
+    startSec?: number;
+    endSec?: number;
+    durationMs?: number;
+}

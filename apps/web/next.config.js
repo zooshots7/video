@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    transpilePackages: ["@video-editor/shared", "@video-editor/video", "remotion", "@remotion/player"],
+    transpilePackages: ["@video-editor/shared", "@video-editor/export-adapter", "@video-editor/video", "remotion", "@remotion/player"],
     experimental: {
         serverComponentsExternalPackages: [
             "@remotion/renderer",

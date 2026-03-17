@@ -1,81 +1,76 @@
-/* ── Project ─────────────────────────────────────────── */
+export type DashboardProjectStatus = "draft" | "processing" | "done" | "failed";
 
-export type ProjectStatus = "draft" | "processing" | "done";
-
-export interface Project {
-    id: string;
-    title: string;
-    status: ProjectStatus;
-    videoUrl: string | null;
-    templateId: string | null;
-    hookText: string;
-    ctaText: string;
-    accentColor: string;
-    createdAt: string;
-    updatedAt: string;
+export interface DashboardProject {
+  id: string;
+  title: string;
+  status: DashboardProjectStatus;
+  video_url: string | null;
+  template_id: string | null;
+  video_template_id: string | null;
+  hook_text: string;
+  cta_text: string;
+  accent_color: string;
+  duration_sec: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
-
-/* ── Transcript ──────────────────────────────────────── */
 
 export interface TranscriptWord {
-    word: string;
-    start: number; // seconds
-    end: number;   // seconds
+  word: string;
+  start: number;
+  end: number;
 }
 
-/* ── Template ────────────────────────────────────────── */
-
 export interface CaptionStyle {
-    fontFamily: string;
-    fontSize: number;
-    color: string;
-    backgroundColor: string;
-    highlightColor: string;
-    position: "bottom" | "center";
+  fontFamily: string;
+  fontSize: number;
+  color: string;
+  backgroundColor: string;
+  highlightColor: string;
+  position: "bottom" | "center";
 }
 
 export interface HookConfig {
-    durationSec: number;
-    background: string;
-    textColor: string;
-    fontSize: number;
+  durationSec: number;
+  background: string;
+  textColor: string;
+  fontSize: number;
 }
 
 export interface CtaConfig {
-    durationSec: number;
-    background: string;
-    textColor: string;
-    fontSize: number;
-    buttonText: string;
+  durationSec: number;
+  background: string;
+  textColor: string;
+  fontSize: number;
+  buttonText: string;
 }
 
 export interface ZoomConfig {
-    scale: number;
-    durationSec: number;
-    easing: "ease-in-out" | "spring";
+  scale: number;
+  durationSec: number;
+  easing: "ease-in-out" | "spring";
 }
 
 export interface TemplateConfig {
-    id: string;
-    name: string;
-    description: string;
-    thumbnail?: string;
-    accentColor: string;
-    hook: HookConfig;
-    caption: CaptionStyle;
-    zoom: ZoomConfig;
-    cta: CtaConfig;
+  id: string;
+  name: string;
+  description: string;
+  thumbnail?: string;
+  accentColor: string;
+  hook: HookConfig;
+  caption: CaptionStyle;
+  zoom: ZoomConfig;
+  cta: CtaConfig;
 }
-
-/* ── Render Job ──────────────────────────────────────── */
 
 export type RenderStatus = "queued" | "rendering" | "done" | "failed";
 
 export interface RenderJob {
-    id: string;
-    projectId: string;
-    status: RenderStatus;
-    progress: number; // 0-100
-    outputUrl: string | null;
-    createdAt: string;
+  id: string;
+  projectId: string;
+  status: RenderStatus;
+  progress: number;
+  outputUrl: string | null;
+  createdAt: string;
 }

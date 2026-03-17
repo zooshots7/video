@@ -5,6 +5,7 @@
     "scripts": {
         "dev": "next dev",
         "build": "next build",
+        "test": "node --loader tsx --test src/lib/editor-model.test.ts src/lib/upload.test.ts src/lib/project-adapters.test.ts src/lib/render-adapters.test.ts src/lib/mock-data.test.ts src/app/editor/lib/editor-workflow.test.ts",
         "start": "next start",
         "lint": "next lint",
         "clean": "rm -rf .next"

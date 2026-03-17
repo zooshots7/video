@@ -1,177 +1,472 @@
 import React from "react";
-import { AbsoluteFill, Video, Audio, Sequence, useVideoConfig } from "remotion";
-import type { VideoCompositionProps, ProjectAssetInput } from "./types";
-import { HookCard } from "./components/HookCard";
-import { Captions } from "./components/Captions";
-import { CTAEndCard } from "./components/CTAEndCard";
-import { PunchInZoomLayer } from "./components/PunchInZoomLayer";
+import {
+    AbsoluteFill,
+    Audio,
+    Img,
+    Sequence,
+    Video,
+    interpolate,
+    useCurrentFrame,
+    useVideoConfig,
+} from "remotion";
+import {
+    getClipAssetUrl,
+    resolveClipAsset,
+    sortTracksForRender,
+    framesFromMs,
+    type EditorProject,
+    type EffectClip,
+    type MediaClip,
+    type TextClip,
+} from "@video-editor/timeline-schema";
+import type { EditorProjectCompositionProps } from "./types";
+import {
+    getActiveZoomScale,
+    mediaStyle,
+    resolveEffectConfig,
+    resolveEffectKind,
+} from "./composition-plan";
 
-/* ── VFX Overlays ─────────────────────── */
+export const VideoComposition: React.FC<EditorProjectCompositionProps> = ({
+    project,
+}) => {
+    const frame = useCurrentFrame();
+    const { fps, width, height } = useVideoConfig();
+    const visibleTracks = sortTracksForRender(
+        project.tracks.filter((track) => !track.hidden)
+    );
 
-const FlashOverlay: React.FC<{ color: string; opacity: number }> = ({
-    color,
-    opacity,
-}) => (
-    <AbsoluteFill
-        style={{
-            backgroundColor: color,
-            opacity,
-            mixBlendMode: "screen",
-        }}
-    />
-);
+    const zoomScale = getActiveZoomScale(project, frame, fps);
 
-const VignetteOverlay: React.FC<{ intensity: number }> = ({ intensity }) => (
-    <AbsoluteFill
-        style={{
-            background: `radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,${intensity}) 100%)`,
-        }}
-    />
-);
-
-const ShakeLayer: React.FC<{
-    children: React.ReactNode;
-    amplitude: number;
-}> = ({ children, amplitude }) => {
-    const frame = React.useMemo(() => Math.random() * 100, []);
-    const offsetX = Math.sin(frame * 0.5) * amplitude;
-    const offsetY = Math.cos(frame * 0.7) * amplitude;
     return (
         <AbsoluteFill
             style={{
-                transform: `translate(${offsetX}px, ${offsetY}px)`,
+                backgroundColor: project.settings.backgroundColor,
+                overflow: "hidden",
             }}
         >
-            {children}
+            <AbsoluteFill
+                style={{
+                    transform: `scale(${zoomScale})`,
+                    transformOrigin: "center center",
+                }}
+            >
+                {visibleTracks.map((track) => (
+                    <TrackLayer
+                        key={track.id}
+                        project={project}
+                        track={track}
+                        fps={fps}
+                        width={width}
+                        height={height}
+                    />
+                ))}
+            </AbsoluteFill>
         </AbsoluteFill>
     );
 };
 
-/* ── Main Composition ─────────────────── */
+function TrackLayer({
+    project,
+    track,
+    fps,
+    width,
+    height,
+}: {
+    project: EditorProject;
+    track: EditorProject["tracks"][number];
+    fps: number;
+    width: number;
+    height: number;
+}) {
+    return (
+        <AbsoluteFill>
+            {track.clips.map((clip) => {
+                const startFrame = framesFromMs(clip.startAtMs, fps);
+                const durationInFrames = Math.max(
+                    1,
+                    framesFromMs(clip.durationMs, fps)
+                );
 
-export const VideoComposition: React.FC<VideoCompositionProps> = ({
-    sourceVideoUrl,
-    transcriptWords,
-    templateConfig,
-    hookText,
-    ctaText,
-    zoomTimestamps,
-    durationInFrames,
-    projectAssets = [],
-}) => {
-    const { fps } = useVideoConfig();
+                return (
+                    <Sequence
+                        key={clip.id}
+                        from={startFrame}
+                        durationInFrames={durationInFrames}
+                        layout="none"
+                    >
+                        {renderClip({ project, clip, fps, width, height })}
+                    </Sequence>
+                );
+            })}
+        </AbsoluteFill>
+    );
+}
 
-    // Separate assets by type
-    const sfxAssets = projectAssets.filter((a) => a.assetType === "sfx");
-    const musicAssets = projectAssets.filter((a) => a.assetType === "music");
-    const vfxAssets = projectAssets.filter((a) => a.assetType === "vfx");
+function renderClip({
+    project,
+    clip,
+    fps,
+    width,
+    height,
+}: {
+    project: EditorProject;
+    clip: EditorProject["tracks"][number]["clips"][number];
+    fps: number;
+    width: number;
+    height: number;
+}) {
+    if (clip.type === "text") {
+        return <TextClipView clip={clip} width={width} />;
+    }
+
+    if (clip.type === "effect") {
+        return (
+            <EffectClipView
+                project={project}
+                clip={clip}
+                width={width}
+                fps={fps}
+            />
+        );
+    }
+
+    const assetUrl = getClipAssetUrl(project, clip);
+    const mediaClip = clip as MediaClip;
+
+    if (!assetUrl) {
+        return (
+            <MissingAssetPlaceholder
+                label={clip.type}
+                width={width}
+                height={height}
+            />
+        );
+    }
+
+    const sourceStartFrame = Math.max(
+        0,
+        framesFromMs(mediaClip.sourceStartMs ?? 0, fps)
+    );
+    const style = mediaStyle(mediaClip, width, height);
+
+    if (clip.type === "video") {
+        return (
+            <Video
+                src={assetUrl}
+                startFrom={sourceStartFrame}
+                volume={mediaClip.volume ?? 1}
+                style={style}
+            />
+        );
+    }
+
+    if (clip.type === "audio") {
+        return (
+            <Audio
+                src={assetUrl}
+                startFrom={sourceStartFrame}
+                volume={mediaClip.volume ?? 1}
+            />
+        );
+    }
+
+    return <Img src={assetUrl} style={style} />;
+}
+
+function TextClipView({
+    clip,
+    width,
+}: {
+    clip: TextClip;
+    width: number;
+}) {
+    const hasBackground = Boolean(clip.style.backgroundColor);
+    const isCaptionLike = clip.style.textAlign === "center";
 
     return (
-        <AbsoluteFill style={{ backgroundColor: "#000" }}>
-            {/* Video layer with punch-in zoom */}
-            <PunchInZoomLayer
-                zoomTimestamps={zoomTimestamps}
-                config={templateConfig.zoom}
+        <div
+            style={{
+                position: "absolute",
+                left: clip.transform.x,
+                top: clip.transform.y,
+                transform: "translate(-50%, -50%)",
+                padding: hasBackground ? "14px 20px" : 0,
+                borderRadius: hasBackground ? 16 : 0,
+                backgroundColor: clip.style.backgroundColor ?? "transparent",
+                maxWidth: width * 0.84,
+                textAlign: clip.style.textAlign,
+                fontFamily: `${clip.style.fontFamily}, system-ui, sans-serif`,
+                fontSize: clip.style.fontSize,
+                fontWeight: clip.style.fontWeight,
+                color: clip.style.color,
+                lineHeight: 1.15,
+                textShadow: isCaptionLike
+                    ? "0 8px 24px rgba(0,0,0,0.45)"
+                    : "none",
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+                filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.25))",
+            }}
+        >
+            {clip.content}
+        </div>
+    );
+}
+
+function EffectClipView({
+    project,
+    clip,
+    width,
+    fps,
+}: {
+    project: EditorProject;
+    clip: EffectClip;
+    width: number;
+    fps: number;
+}) {
+    const asset = resolveClipAsset(project, clip);
+    const config = resolveEffectConfig(asset, clip);
+    const kind = resolveEffectKind(asset, config);
+
+    if (kind === "zoom") {
+        return null;
+    }
+
+    if (kind === "hook" || kind === "hook-card") {
+        return (
+            <CardEffect
+                clip={clip}
+                width={width}
+                fps={fps}
+                title={String(config.title ?? asset?.name ?? "Hook")}
+                subtitle={String(config.subtitle ?? "")}
+                background={String(config.background ?? "#050505")}
+                accentColor={String(config.color ?? "#ffffff")}
+                buttonText={String(config.buttonText ?? "")}
+                mode="hook"
+            />
+        );
+    }
+
+    if (kind === "cta" || kind === "end-card") {
+        return (
+            <CardEffect
+                clip={clip}
+                width={width}
+                fps={fps}
+                title={String(config.title ?? asset?.name ?? "CTA")}
+                subtitle={String(config.subtitle ?? "")}
+                background={String(config.background ?? "#050505")}
+                accentColor={String(config.color ?? "#ffffff")}
+                buttonText={String(config.buttonText ?? "Follow for more")}
+                mode="cta"
+            />
+        );
+    }
+
+    if (kind === "flash" || kind === "rgb-split" || kind === "glitch") {
+        return (
+            <AbsoluteFill
+                style={{
+                    backgroundColor:
+                        kind === "flash"
+                            ? String(config.color ?? "#ffffff")
+                            : "#ff0044",
+                    opacity: Number(config.opacity ?? 0.16),
+                    mixBlendMode: kind === "flash" ? "screen" : "normal",
+                }}
+            />
+        );
+    }
+
+    if (kind === "vignette") {
+        return (
+            <AbsoluteFill
+                style={{
+                    background:
+                        "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.7) 100%)",
+                    opacity: Number(config.intensity ?? 0.75),
+                }}
+            />
+        );
+    }
+
+    return null;
+}
+
+function CardEffect({
+    clip,
+    width,
+    fps,
+    title,
+    subtitle,
+    background,
+    accentColor,
+    buttonText,
+    mode,
+}: {
+    clip: EffectClip;
+    width: number;
+    fps: number;
+    title: string;
+    subtitle: string;
+    background: string;
+    accentColor: string;
+    buttonText: string;
+    mode: "hook" | "cta";
+}) {
+    const frame = useCurrentFrame();
+    const durationFrames = Math.max(1, framesFromMs(clip.durationMs, fps));
+    const fadeFrames = Math.max(
+        1,
+        Math.min(Math.round(fps * 0.25), Math.floor(durationFrames / 2))
+    );
+    const entranceFrames = Math.max(
+        1,
+        Math.min(mode === "hook" ? Math.round(fps * 0.35) : Math.round(fps * 0.4), Math.floor(durationFrames / 2))
+    );
+    const slideFrames = Math.max(
+        1,
+        Math.min(mode === "hook" ? Math.round(fps * 0.35) : Math.round(fps * 0.45), Math.floor(durationFrames / 2))
+    );
+    const shortClip = durationFrames <= fadeFrames * 2;
+    const opacity = shortClip
+        ? 1
+        : interpolate(
+              frame,
+              [
+                  0,
+                  fadeFrames,
+                  Math.max(fadeFrames, durationFrames - fadeFrames),
+                  durationFrames,
+              ],
+              [0, 1, 1, 0],
+              { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+          );
+    const scale = shortClip
+        ? 1
+        : mode === "hook"
+            ? interpolate(
+                  frame,
+                  [0, entranceFrames],
+                  [0.92, 1],
+                  { extrapolateRight: "clamp" }
+              )
+            : interpolate(
+                  frame,
+                  [0, entranceFrames],
+                  [0.94, 1],
+                  { extrapolateRight: "clamp" }
+              );
+    const slideY = shortClip
+        ? 0
+        : mode === "hook"
+            ? interpolate(
+                  frame,
+                  [0, slideFrames],
+                  [24, 0],
+                  { extrapolateRight: "clamp" }
+              )
+            : interpolate(
+                  frame,
+                  [0, slideFrames],
+                  [32, 0],
+                  { extrapolateRight: "clamp" }
+              );
+
+    return (
+        <AbsoluteFill
+            style={{
+                backgroundColor: background,
+                justifyContent: "center",
+                alignItems: "center",
+                opacity,
+            }}
+        >
+            <div
+                style={{
+                    transform: `translateY(${slideY}px) scale(${scale})`,
+                    width: "100%",
+                    maxWidth: Math.min(width * 0.82, 980),
+                    padding: "0 64px",
+                    textAlign: "center",
+                }}
             >
-                <AbsoluteFill>
-                    <Video
-                        src={sourceVideoUrl}
+                <div
+                    style={{
+                        color: accentColor,
+                        fontSize: mode === "hook" ? 80 : 68,
+                        fontFamily: "Inter, system-ui, sans-serif",
+                        fontWeight: 800,
+                        lineHeight: 1.08,
+                        textShadow: "0 12px 34px rgba(0,0,0,0.5)",
+                        marginBottom: subtitle ? 24 : 0,
+                    }}
+                >
+                    {title}
+                </div>
+                {subtitle ? (
+                    <div
                         style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
+                            color: "rgba(255,255,255,0.8)",
+                            fontSize: 28,
+                            lineHeight: 1.35,
+                            fontFamily: "Inter, system-ui, sans-serif",
+                            marginBottom: 28,
                         }}
-                    />
-                </AbsoluteFill>
-            </PunchInZoomLayer>
-
-            {/* VFX Overlays */}
-            {vfxAssets.map((vfx, i) => {
-                const config = (vfx.config ?? {}) as Record<string, any>;
-                const startFrame = Math.round((vfx.startSec ?? 0) * fps);
-                const durationFrames = Math.round(
-                    ((vfx.durationMs ?? 500) / 1000) * fps
-                );
-
-                if (config.type === "rgb-split" || vfx.name?.toLowerCase().includes("glitch")) {
-                    return (
-                        <Sequence
-                            key={`vfx-${i}`}
-                            from={startFrame}
-                            durationInFrames={durationFrames}
-                        >
-                            <FlashOverlay color="#FF0044" opacity={0.15} />
-                        </Sequence>
-                    );
-                }
-                if (vfx.name?.toLowerCase().includes("flash")) {
-                    return (
-                        <Sequence
-                            key={`vfx-${i}`}
-                            from={startFrame}
-                            durationInFrames={durationFrames}
-                        >
-                            <FlashOverlay
-                                color={config.color ?? "#FFFFFF"}
-                                opacity={config.opacity ?? 0.9}
-                            />
-                        </Sequence>
-                    );
-                }
-                if (vfx.name?.toLowerCase().includes("vignette")) {
-                    return (
-                        <Sequence
-                            key={`vfx-${i}`}
-                            from={startFrame}
-                            durationInFrames={durationInFrames}
-                        >
-                            <VignetteOverlay intensity={config.intensity ?? 0.6} />
-                        </Sequence>
-                    );
-                }
-                return null;
-            })}
-
-            {/* Captions with active word highlighting */}
-            <Captions
-                words={transcriptWords}
-                captionStyle={templateConfig.caption}
-            />
-
-            {/* Hook card overlay (first N seconds) */}
-            <HookCard hookText={hookText} config={templateConfig.hook} />
-
-            {/* CTA end card (last N seconds) */}
-            <CTAEndCard
-                ctaText={ctaText}
-                config={templateConfig.cta}
-                totalDurationInFrames={durationInFrames}
-            />
-
-            {/* SFX Audio Layers */}
-            {sfxAssets.map((sfx, i) => {
-                if (!sfx.fileUrl) return null;
-                const startFrame = Math.round((sfx.startSec ?? 0) * fps);
-                return (
-                    <Sequence key={`sfx-${i}`} from={startFrame}>
-                        <Audio src={sfx.fileUrl} volume={0.8} />
-                    </Sequence>
-                );
-            })}
-
-            {/* Music Audio Layers */}
-            {musicAssets.map((track, i) => {
-                if (!track.fileUrl) return null;
-                return (
-                    <Sequence key={`music-${i}`} from={0}>
-                        <Audio
-                            src={track.fileUrl}
-                            volume={0.3}
-                            // Loop music by default
-                        />
-                    </Sequence>
-                );
-            })}
+                    >
+                        {subtitle}
+                    </div>
+                ) : null}
+                {buttonText ? (
+                    <div
+                        style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "18px 36px",
+                            borderRadius: 18,
+                            backgroundColor: "rgba(255,255,255,0.14)",
+                            border: "1px solid rgba(255,255,255,0.18)",
+                            boxShadow: "0 18px 50px rgba(0,0,0,0.3)",
+                            color: "#fff",
+                            fontSize: 34,
+                            fontFamily: "Inter, system-ui, sans-serif",
+                            fontWeight: 700,
+                        }}
+                    >
+                        {buttonText}
+                    </div>
+                ) : null}
+            </div>
         </AbsoluteFill>
     );
-};
+}
+
+function MissingAssetPlaceholder({
+    label,
+    width,
+    height,
+}: {
+    label: string;
+    width: number;
+    height: number;
+}) {
+    return (
+        <AbsoluteFill
+            style={{
+                width,
+                height,
+                backgroundColor: "#101010",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#666",
+                fontFamily: "Inter, system-ui, sans-serif",
+                fontSize: 24,
+            }}
+        >
+            {label} asset missing
+        </AbsoluteFill>
+    );
+}

@@ -1,5 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { Project } from '@video-editor/timeline-schema';
+import {
+    Project,
+    getClipAssetUrl,
+    resolveClipAsset,
+    sortTracksForRender,
+} from '@video-editor/timeline-schema';
 import * as PIXI from 'pixi.js';
 
 interface PreviewRendererProps {
@@ -48,20 +53,21 @@ export const PreviewRenderer: React.FC<PreviewRendererProps> = ({ project, playh
 
         const { width, height } = project.settings;
 
-        const activeClips = project.tracks
-            .filter(t => !t.hidden)
+        const activeClips = sortTracksForRender(project.tracks.filter(t => !t.hidden))
             .flatMap(t => t.clips)
             .filter(clip => playheadMs >= clip.startAtMs && playheadMs < clip.startAtMs + clip.durationMs);
 
         activeClips.forEach(clip => {
-            const tx = clip.transform?.x ?? width / 2;
-            const ty = clip.transform?.y ?? height / 2;
-            const scaleX = clip.transform?.scaleX ?? 1;
-            const scaleY = clip.transform?.scaleY ?? 1;
-            const rotation = ((clip.transform?.rotation ?? 0) * Math.PI) / 180;
+            const asset = resolveClipAsset(project, clip);
+            const assetUrl = getClipAssetUrl(project, clip);
 
             if (clip.type === 'text') {
                 const textClip = clip as any;
+                const tx = clip.transform?.x ?? width / 2;
+                const ty = clip.transform?.y ?? height / 2;
+                const scaleX = clip.transform?.scaleX ?? 1;
+                const scaleY = clip.transform?.scaleY ?? 1;
+                const rotation = ((clip.transform?.rotation ?? 0) * Math.PI) / 180;
                 const text = new PIXI.Text({
                     text: textClip.content,
                     style: {
@@ -85,24 +91,25 @@ export const PreviewRenderer: React.FC<PreviewRendererProps> = ({ project, playh
                 app.stage.addChild(text);
 
             } else if (clip.type === 'video') {
-                const mediaClip = clip as any;
-                const src: string | undefined = mediaClip.src;
-
-                if (src) {
-                    // Reuse or create HTMLVideoElement
-                    let videoEl = videoElementCache.get(clip.id);
+                if (assetUrl) {
+                    const tx = clip.transform?.x ?? width / 2;
+                    const ty = clip.transform?.y ?? height / 2;
+                    const scaleX = clip.transform?.scaleX ?? 1;
+                    const scaleY = clip.transform?.scaleY ?? 1;
+                    const rotation = ((clip.transform?.rotation ?? 0) * Math.PI) / 180;
+                    const cacheKey = asset?.id ?? clip.id;
+                    let videoEl = videoElementCache.get(cacheKey);
                     if (!videoEl) {
                         videoEl = document.createElement('video');
-                        videoEl.src = src;
+                        videoEl.src = assetUrl;
                         videoEl.crossOrigin = 'anonymous';
                         videoEl.muted = true;
                         videoEl.playsInline = true;
                         videoEl.preload = 'auto';
-                        videoElementCache.set(clip.id, videoEl);
+                        videoElementCache.set(cacheKey, videoEl);
                     }
 
-                    // Seek to the correct frame
-                    const offsetSec = (playheadMs - clip.startAtMs) / 1000 + (mediaClip.sourceStartMs ?? 0) / 1000;
+                    const offsetSec = (playheadMs - clip.startAtMs) / 1000 + ((clip as any).sourceStartMs ?? 0) / 1000;
                     if (Math.abs(videoEl.currentTime - offsetSec) > 0.1) {
                         videoEl.currentTime = offsetSec;
                     }
@@ -113,32 +120,25 @@ export const PreviewRenderer: React.FC<PreviewRendererProps> = ({ project, playh
                         sprite.width = width;
                         sprite.height = height;
                         sprite.anchor.set(0.5);
-                        sprite.position.set(tx === width / 2 ? width / 2 : tx, ty === height / 2 ? height / 2 : ty);
+                        sprite.position.set(tx, ty);
                         sprite.scale.set(scaleX, scaleY);
                         sprite.rotation = rotation;
                         app.stage.addChild(sprite);
                     } catch {
-                        // Texture not ready yet — show placeholder
                         const placeholder = new PIXI.Graphics();
                         placeholder.rect(0, 0, width, height).fill({ color: 0x111111 });
                         app.stage.addChild(placeholder);
                     }
-                } else {
-                    // No src (asset not yet uploaded) — draw dark placeholder
-                    const placeholder = new PIXI.Graphics();
-                    placeholder.rect(0, 0, width, height).fill({ color: 0x0f0f0f });
-                    app.stage.addChild(placeholder);
-                    const label = new PIXI.Text({ text: 'Video', style: { fill: '#555', fontSize: 24 } });
-                    label.anchor.set(0.5);
-                    label.position.set(width / 2, height / 2);
-                    app.stage.addChild(label);
                 }
-
             } else if (clip.type === 'image') {
-                const mediaClip = clip as any;
-                if (mediaClip.src) {
+                if (assetUrl) {
+                    const tx = clip.transform?.x ?? width / 2;
+                    const ty = clip.transform?.y ?? height / 2;
+                    const scaleX = clip.transform?.scaleX ?? 1;
+                    const scaleY = clip.transform?.scaleY ?? 1;
+                    const rotation = ((clip.transform?.rotation ?? 0) * Math.PI) / 180;
                     try {
-                        const texture = PIXI.Texture.from(mediaClip.src);
+                        const texture = PIXI.Texture.from(assetUrl);
                         const sprite = new PIXI.Sprite(texture);
                         sprite.width = width;
                         sprite.height = height;
@@ -147,7 +147,28 @@ export const PreviewRenderer: React.FC<PreviewRendererProps> = ({ project, playh
                         sprite.scale.set(scaleX, scaleY);
                         sprite.rotation = rotation;
                         app.stage.addChild(sprite);
-                    } catch {}
+                    } catch {
+                        const placeholder = new PIXI.Graphics();
+                        placeholder.rect(0, 0, width, height).fill({ color: 0x111111 });
+                        app.stage.addChild(placeholder);
+                    }
+                }
+            } else if (clip.type === 'effect') {
+                const effectConfig = ((asset?.metadata?.config ?? (clip as any).config ?? {}) as Record<string, any>);
+                const effectName = `${asset?.name ?? 'Effect'}`.toLowerCase();
+
+                if (effectConfig.type === 'rgb-split' || effectName.includes('glitch')) {
+                    const overlay = new PIXI.Graphics();
+                    overlay.rect(0, 0, width, height).fill({ color: 0xff0044, alpha: 0.15 });
+                    app.stage.addChild(overlay);
+                } else if (effectName.includes('flash')) {
+                    const overlay = new PIXI.Graphics();
+                    overlay.rect(0, 0, width, height).fill({ color: effectConfig.color ?? 0xffffff, alpha: 0.75 });
+                    app.stage.addChild(overlay);
+                } else if (effectName.includes('vignette')) {
+                    const overlay = new PIXI.Graphics();
+                    overlay.rect(0, 0, width, height).fill({ color: 0x000000, alpha: 0.25 });
+                    app.stage.addChild(overlay);
                 }
             }
             // Audio clips have no visual representation in preview

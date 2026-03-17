@@ -1,123 +1,88 @@
 /**
  * @video-editor/render-worker
  *
- * BullMQ worker that processes render jobs dispatched from /api/export.
- * Each job payload is a validated Project JSON from the universal timeline schema.
- *
- * Run this worker separately:
- *   node -r ts-node/register workers/render/src/index.ts
+ * BullMQ worker that processes canonical timeline render jobs.
+ * Queue orchestration lives here; the Remotion bundle/render/upload work is
+ * delegated to `render-pipeline.ts`.
  */
 
-import { Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
-import path from 'path';
-import os from 'os';
-import fs from 'fs';
-import { createClient } from '@supabase/supabase-js';
+import { Job, Worker } from "bullmq";
+import Redis from "ioredis";
+import { createClient } from "@supabase/supabase-js";
+import { Project, ProjectSchema } from "@video-editor/timeline-schema";
+import { renderTimelineProject, RenderPipelineProgress } from "./render-pipeline";
 
-// ─── Config ──────────────────────────────────────────────────────────────────
-
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
-const QUEUE_NAME = 'video-render-queue';
+const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const QUEUE_NAME = "video-render-queue";
 
 const connection = new Redis(REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    tls: REDIS_URL.startsWith('rediss://') ? {} : undefined,
+    tls: REDIS_URL.startsWith("rediss://") ? {} : undefined,
 });
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// ─── Worker ───────────────────────────────────────────────────────────────────
+interface RenderQueuePayload {
+    project: Project;
+    renderJobId: string;
+}
+
+async function updateRenderJob(renderJobId: string, patch: Record<string, unknown>) {
+    await supabase
+        .from("render_jobs")
+        .update(patch)
+        .eq("id", renderJobId);
+}
 
 const worker = new Worker(
     QUEUE_NAME,
-    async (job: Job) => {
-        const project = job.data;
-        const jobId = job.id ?? 'unknown';
+    async (job: Job<RenderQueuePayload>) => {
+        const payload = job.data;
+        const project = ProjectSchema.parse(payload.project);
 
-        console.log(`[render-worker] Starting job ${jobId} for project ${project.id}`);
+        console.log(`[render-worker] Starting job ${job.id} for project ${project.id}`);
+
+        await updateRenderJob(payload.renderJobId, {
+            status: "rendering",
+            progress: 5,
+            started_at: new Date().toISOString(),
+        });
         await job.updateProgress(5);
 
-        // 1. Dynamic import Remotion (heavy — only loaded in worker process)
-        const { bundle } = await import('@remotion/bundler');
-        const { renderMedia, selectComposition } = await import('@remotion/renderer');
+        try {
+            const result = await renderTimelineProject({
+                project,
+                renderJobId: payload.renderJobId,
+                onProgress: async (progress: RenderPipelineProgress) => {
+                    await updateRenderJob(payload.renderJobId, {
+                        progress: progress.progress,
+                    });
+                    await job.updateProgress(progress.progress);
+                },
+            });
 
-        // 2. Bundle the Remotion entry point
-        const entryPoint = path.resolve(
-            __dirname,
-            '../../../packages/export-adapter/src/index.ts'
-        );
+            await updateRenderJob(payload.renderJobId, {
+                status: "done",
+                progress: 100,
+                output_url: result.outputUrl,
+                completed_at: new Date().toISOString(),
+            });
+            await job.updateProgress(100);
 
-        console.log(`[render-worker] Bundling from ${entryPoint}`);
-        await job.updateProgress(10);
-
-        const bundleLocation = await bundle({
-            entryPoint,
-            onProgress: (progress: number) => {
-                const mapped = Math.round(10 + progress * 0.2);
-                job.updateProgress(mapped).catch(() => {});
-            },
-        });
-
-        await job.updateProgress(30);
-
-        // 3. Derive composition settings from project JSON
-        const { fps, durationMs, width, height } = project.settings;
-        const durationInFrames = Math.round((durationMs / 1000) * fps);
-
-        // 4. Select composition
-        const composition = await selectComposition({
-            serveUrl: bundleLocation,
-            id: 'Main',
-            inputProps: { project },
-        });
-
-        await job.updateProgress(35);
-
-        // 5. Render to temp file
-        const outputDir = path.join(os.tmpdir(), 'video-editor-renders');
-        fs.mkdirSync(outputDir, { recursive: true });
-        const outputPath = path.join(outputDir, `${jobId}.mp4`);
-
-        await renderMedia({
-            composition: { ...composition, durationInFrames, fps, width, height },
-            serveUrl: bundleLocation,
-            codec: 'h264',
-            outputLocation: outputPath,
-            inputProps: { project },
-            onProgress: ({ progress }: { progress: number }) => {
-                const mapped = Math.round(35 + progress * 55);
-                job.updateProgress(mapped).catch(() => {});
-            },
-        });
-
-        await job.updateProgress(90);
-        console.log(`[render-worker] Rendered to ${outputPath}`);
-
-        // 6. Upload to Supabase Storage
-        const fileBuffer = fs.readFileSync(outputPath);
-        const storagePath = `${project.id}/${jobId}.mp4`;
-
-        const { error: uploadError } = await supabase.storage
-            .from('renders')
-            .upload(storagePath, fileBuffer, { contentType: 'video/mp4', upsert: true });
-
-        // Cleanup temp file
-        try { fs.unlinkSync(outputPath); } catch {}
-
-        if (uploadError) {
-            throw new Error(`Storage upload failed: ${uploadError.message}`);
+            console.log(`[render-worker] Job ${job.id} complete → ${result.outputUrl}`);
+            return { outputUrl: result.outputUrl };
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error("Unknown render failure");
+            await updateRenderJob(payload.renderJobId, {
+                status: "failed",
+                error_message: err.message,
+                completed_at: new Date().toISOString(),
+            });
+            throw err;
         }
-
-        const { data: urlData } = supabase.storage.from('renders').getPublicUrl(storagePath);
-        await job.updateProgress(100);
-
-        console.log(`[render-worker] Job ${jobId} complete → ${urlData.publicUrl}`);
-
-        return { outputUrl: urlData.publicUrl };
     },
     {
         connection: connection as any,
@@ -125,15 +90,15 @@ const worker = new Worker(
     }
 );
 
-worker.on('completed', (job, result) => {
+worker.on("completed", (job, result) => {
     console.log(`[render-worker] ✅ Job ${job.id} completed:`, result);
 });
 
-worker.on('failed', (job, err) => {
+worker.on("failed", (job, err) => {
     console.error(`[render-worker] ❌ Job ${job?.id} failed:`, err.message);
 });
 
-worker.on('progress', (job, progress) => {
+worker.on("progress", (job, progress) => {
     console.log(`[render-worker] Job ${job.id} progress: ${progress}%`);
 });
 

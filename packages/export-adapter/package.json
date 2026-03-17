@@ -13,6 +13,7 @@
     },
     "dependencies": {
         "@types/react": "^18.3.28",
+        "@video-editor/video": "*",
         "@video-editor/timeline-schema": "*",
         "react": "^18.3.1",
         "remotion": "^4.0.434"

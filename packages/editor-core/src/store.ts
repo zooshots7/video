@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import { Project, Clip, Track } from '@video-editor/timeline-schema';
+import {
+  Asset,
+  Clip,
+  Project,
+  Track,
+  ensureDefaultTracks,
+} from '@video-editor/timeline-schema';
 
 interface EditorState {
   project: Project | null;
@@ -25,6 +31,14 @@ interface EditorState {
   moveClipTime: (trackId: string, clipId: string, newStartMs: number) => void;
   trimClip: (trackId: string, clipId: string, newStartMs: number, newDurationMs: number, sourceStartMs?: number) => void;
   deleteClip: (trackId: string, clipId: string) => void;
+  upsertAsset: (asset: Asset) => void;
+  deleteAsset: (assetId: string) => void;
+}
+
+function sortClips(clips: Clip[]) {
+  return [...clips].sort(
+    (a, b) => a.startAtMs - b.startAtMs || a.id.localeCompare(b.id),
+  );
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -35,7 +49,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   activeTool: 'select',
   snappingEnabled: true,
 
-  setProject: (project) => set({ project }),
+  setProject: (project) => set({ project: ensureDefaultTracks(project) }),
   setPlayhead: (ms) => set({ playheadMs: ms }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   selectClip: (id) => set({ selectedClipId: id }),
@@ -44,72 +58,119 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   addTrack: (track) => set((state) => {
     if (!state.project) return state;
-    return { project: { ...state.project, tracks: [...state.project.tracks, track] } };
+    return {
+      project: {
+        ...state.project,
+        tracks: [...state.project.tracks, track],
+      },
+    };
   }),
 
   addClip: (trackId, clip) => set((state) => {
     if (!state.project) return state;
-    const newProject = { ...state.project };
-    const trackIndex = newProject.tracks.findIndex(t => t.id === trackId);
+    const trackIndex = state.project.tracks.findIndex((t) => t.id === trackId);
     if (trackIndex === -1) return state;
-    newProject.tracks[trackIndex].clips.push(clip);
-    return { project: newProject };
+
+    const tracks = state.project.tracks.map((track, index) =>
+      index === trackIndex
+        ? { ...track, clips: sortClips([...track.clips, clip]) }
+        : track,
+    );
+
+    return { project: { ...state.project, tracks } };
   }),
 
   updateClip: (trackId, clipId, updates) => set((state) => {
     if (!state.project) return state;
-    
-    const trackIndex = state.project.tracks.findIndex(t => t.id === trackId);
+
+    const trackIndex = state.project.tracks.findIndex((t) => t.id === trackId);
     if (trackIndex === -1) return state;
 
-    const clipIndex = state.project.tracks[trackIndex].clips.findIndex(c => c.id === clipId);
-    if (clipIndex === -1) return state;
+    const clips = state.project.tracks[trackIndex].clips.map((clip) =>
+      clip.id === clipId ? ({ ...clip, ...updates } as Clip) : clip,
+    );
 
-    const newProject = { ...state.project };
-    newProject.tracks[trackIndex].clips[clipIndex] = {
-      ...newProject.tracks[trackIndex].clips[clipIndex],
-      ...updates
-    } as Clip;
+    const tracks = state.project.tracks.map((track, index) =>
+      index === trackIndex ? { ...track, clips: sortClips(clips) } : track,
+    );
 
-    return { project: newProject };
+    return { project: { ...state.project, tracks } };
   }),
 
   moveClipTime: (trackId, clipId, newStartMs) => set((state) => {
      if (!state.project) return state;
-     const newProject = { ...state.project };
-     const trackIndex = newProject.tracks.findIndex(t => t.id === trackId);
+     const trackIndex = state.project.tracks.findIndex((t) => t.id === trackId);
      if (trackIndex === -1) return state;
-     const clipIndex = newProject.tracks[trackIndex].clips.findIndex(c => c.id === clipId);
-     if (clipIndex === -1) return state;
-     
-     newProject.tracks[trackIndex].clips[clipIndex].startAtMs = Math.max(0, newStartMs);
-     return { project: newProject };
+
+     const clips = state.project.tracks[trackIndex].clips.map((clip) =>
+       clip.id === clipId ? { ...clip, startAtMs: Math.max(0, newStartMs) } : clip,
+     );
+
+     const tracks = state.project.tracks.map((track, index) =>
+       index === trackIndex ? { ...track, clips: sortClips(clips) } : track,
+     );
+
+     return { project: { ...state.project, tracks } };
   }),
 
   trimClip: (trackId, clipId, startMs, durationMs, sourceStartMs) => set((state) => {
      if (!state.project) return state;
-     const newProject = { ...state.project };
-     const trackIndex = newProject.tracks.findIndex(t => t.id === trackId);
+     const trackIndex = state.project.tracks.findIndex((t) => t.id === trackId);
      if (trackIndex === -1) return state;
-     const clipIndex = newProject.tracks[trackIndex].clips.findIndex(c => c.id === clipId);
-     if (clipIndex === -1) return state;
-     
-     const clip = newProject.tracks[trackIndex].clips[clipIndex];
-     clip.startAtMs = Math.max(0, startMs);
-     clip.durationMs = Math.max(100, durationMs); // Ensure minimum duration
-     
-     if (sourceStartMs !== undefined && clip.type !== 'text') {
-        (clip as any).sourceStartMs = Math.max(0, sourceStartMs);
-     }
-     return { project: newProject };
+
+     const clips = state.project.tracks[trackIndex].clips.map((clip) => {
+       if (clip.id !== clipId) return clip;
+       const nextClip = {
+         ...clip,
+         startAtMs: Math.max(0, startMs),
+         durationMs: Math.max(100, durationMs),
+       } as Clip;
+
+       if (sourceStartMs !== undefined && nextClip.type !== 'text') {
+         (nextClip as any).sourceStartMs = Math.max(0, sourceStartMs);
+       }
+
+       return nextClip;
+     });
+
+     const tracks = state.project.tracks.map((track, index) =>
+       index === trackIndex ? { ...track, clips: sortClips(clips) } : track,
+     );
+
+     return { project: { ...state.project, tracks } };
   }),
 
   deleteClip: (trackId, clipId) => set((state) => {
       if (!state.project) return state;
-      const newProject = { ...state.project };
-      const trackIndex = newProject.tracks.findIndex(t => t.id === trackId);
+      const trackIndex = state.project.tracks.findIndex(t => t.id === trackId);
       if (trackIndex === -1) return state;
-      newProject.tracks[trackIndex].clips = newProject.tracks[trackIndex].clips.filter(c => c.id !== clipId);
-      return { project: newProject };
+
+      const tracks = state.project.tracks.map((track, index) =>
+        index === trackIndex
+          ? { ...track, clips: track.clips.filter((clip) => clip.id !== clipId) }
+          : track,
+      );
+
+      return { project: { ...state.project, tracks } };
+  }),
+
+  upsertAsset: (asset) => set((state) => {
+    if (!state.project) return state;
+    return {
+      project: {
+        ...state.project,
+        assets: {
+          ...state.project.assets,
+          [asset.id]: asset,
+        },
+      },
+    };
+  }),
+
+  deleteAsset: (assetId) => set((state) => {
+    if (!state.project || !state.project.assets[assetId]) return state;
+    const assets = { ...state.project.assets };
+    delete assets[assetId];
+    return { project: { ...state.project, assets } };
   }),
 }));

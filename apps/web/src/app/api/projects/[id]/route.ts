@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, createAdminClient } from "@/lib/supabase";
+import type { DbTranscriptWord } from "@video-editor/shared";
+import {
+    buildProjectUpdatePayload,
+    extractVideoStoragePath,
+    inferStorageBucket,
+} from "@/lib/project-adapters";
+import { mapDbTranscriptWords } from "@/lib/render-adapters";
 
 /**
  * GET /api/projects/[id]
@@ -28,14 +35,11 @@ export async function GET(
     // Generate signed URL for private video bucket
     let signedVideoUrl: string | null = null;
     if (project.video_url) {
-        // Extract storage path from full URL
-        const videoUrl = project.video_url as string;
-        const bucketPrefix = "/storage/v1/object/public/videos/";
-        const idx = videoUrl.indexOf(bucketPrefix);
-        if (idx !== -1) {
-            const storagePath = videoUrl.substring(idx + bucketPrefix.length);
+        const storagePath = extractVideoStoragePath(project.video_url);
+        const bucket = inferStorageBucket(project.video_url);
+        if (storagePath && bucket) {
             const { data: signedData } = await supabase.storage
-                .from("videos")
+                .from(bucket)
                 .createSignedUrl(storagePath, 3600); // 1 hour
             if (signedData?.signedUrl) {
                 signedVideoUrl = signedData.signedUrl;
@@ -52,8 +56,11 @@ export async function GET(
         .single();
 
     if (transcriptData) {
-        const words = (transcriptData.transcript_words ?? []).sort(
-            (a: any, b: any) => a.sort_order - b.sort_order
+        const words = mapDbTranscriptWords(
+            (transcriptData.transcript_words ?? []) as Pick<
+                DbTranscriptWord,
+                "word" | "start_sec" | "end_sec" | "sort_order"
+            >[]
         );
         transcript = {
             ...transcriptData,
@@ -85,13 +92,7 @@ export async function PATCH(
     const supabase = createServerClient();
 
     // Build update payload from allowed fields
-    const update: Record<string, any> = {};
-    if (body.templateId !== undefined) update.template_id = body.templateId;
-    if (body.hookText !== undefined) update.hook_text = body.hookText;
-    if (body.ctaText !== undefined) update.cta_text = body.ctaText;
-    if (body.accentColor !== undefined) update.accent_color = body.accentColor;
-    if (body.status !== undefined) update.status = body.status;
-    if (body.title !== undefined) update.title = body.title;
+    const update = buildProjectUpdatePayload(body);
 
     if (Object.keys(update).length === 0) {
         return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
@@ -157,4 +158,3 @@ export async function DELETE(
 
     return NextResponse.json({ ok: true });
 }
-

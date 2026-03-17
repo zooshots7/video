@@ -3,32 +3,23 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { DashboardProject } from "@video-editor/shared";
 
-const statusBadge: Record<string, string> = {
+const statusBadge: Record<DashboardProject["status"], string> = {
     draft: "bg-surface-border/50 text-slate-400",
     processing: "bg-amber-500/15 text-amber-400 border border-amber-500/20",
     done: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
     failed: "bg-red-500/15 text-red-400 border border-red-500/20",
 };
 
-interface Project {
-    id: string;
-    title: string;
-    status: string;
-    template_id: string | null;
-    created_at: string;
-}
-
-export function ProjectCard({ project }: { project: Project }) {
+export function ProjectCard({ project }: { project: DashboardProject }) {
     const router = useRouter();
     const [showMenu, setShowMenu] = useState(false);
     const [renaming, setRenaming] = useState(false);
     const [newTitle, setNewTitle] = useState(project.title);
     const [deleting, setDeleting] = useState(false);
 
-    const href = project.template_id
-        ? `/review?project=${project.id}`
-        : `/templates?project=${project.id}`;
+    const href = `/editor?project=${project.id}`;
 
     async function handleDelete() {
         if (!confirm("Delete this project? This cannot be undone.")) return;

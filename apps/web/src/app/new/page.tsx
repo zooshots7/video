@@ -93,8 +93,8 @@ export default function NewProjectPage() {
 
             setProgress(100);
 
-            // Step 4: Navigate to template selection with the project ID
-            router.push(`/templates?project=${projectData.project.id}`);
+            // Step 4: Enter the guided editor flow
+            router.push(`/editor?project=${projectData.project.id}`);
         } catch (err: any) {
             setError(err.message || "Something went wrong");
             setUploading(false);

@@ -5,6 +5,7 @@
     "main": "./src/index.ts",
     "types": "./src/index.ts",
     "scripts": {
+        "test": "node --loader tsx --test test/project-timeline.test.ts src/timing.test.ts",
         "build": "tsc",
         "clean": "rm -rf dist"
     },

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useEditorStore } from '@video-editor/editor-core';
-import { Track, Clip } from '@video-editor/timeline-schema';
+import { Track, Clip, getAssetUrl } from '@video-editor/timeline-schema';
 import { motion } from 'framer-motion';
 import WaveSurfer from 'wavesurfer.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -32,6 +32,7 @@ const TimelineClip = ({ trackId, clip }: { trackId: string, clip: Clip }) => {
     const waveContainerRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
     const [isHovering, setIsHovering] = useState(false);
+    const assetUrl = project ? getAssetUrl(project, clip) : null;
 
     const widthStr = `${(clip.durationMs / 1000) * PIXELS_PER_SECOND}px`;
     const leftStr = `${(clip.startAtMs / 1000) * PIXELS_PER_SECOND}px`;
@@ -41,7 +42,8 @@ const TimelineClip = ({ trackId, clip }: { trackId: string, clip: Clip }) => {
         video: 'bg-[#4B617A]/80 border-[#6582A0]', // Muted Slate Blue
         audio: 'bg-[#3A6B4F]/80 border-[#4F906A]', // Desaturated Forest Green
         image: 'bg-[#7A5B4B]/80 border-[#A07765]', // Muted Brown/Amber
-        text: 'bg-[#6B4B7A]/80 border-[#8D65A0]'   // Muted Purple
+        text: 'bg-[#6B4B7A]/80 border-[#8D65A0]',  // Muted Purple
+        effect: 'bg-[#7A664B]/80 border-[#A08B65]',
     };
     const colorClass = bgColors[clip.type] || bgColors.video;
 
@@ -49,8 +51,7 @@ const TimelineClip = ({ trackId, clip }: { trackId: string, clip: Clip }) => {
     useEffect(() => {
         if (clip.type !== 'audio' && clip.type !== 'video' || !waveContainerRef.current) return;
         
-        const src = (clip as any).src;
-        if (!src) return;
+        if (!assetUrl) return;
 
         wavesurferRef.current = WaveSurfer.create({
             container: waveContainerRef.current,
@@ -62,7 +63,7 @@ const TimelineClip = ({ trackId, clip }: { trackId: string, clip: Clip }) => {
             barRadius: 2,
             height: 30,
             interact: false,
-            url: src,
+            url: assetUrl,
         });
 
         wavesurferRef.current.on('decode', () => {
@@ -70,7 +71,7 @@ const TimelineClip = ({ trackId, clip }: { trackId: string, clip: Clip }) => {
         });
 
         return () => wavesurferRef.current?.destroy();
-    }, [clip.id, clip.type, (clip as any).src]);
+    }, [assetUrl, clip.id, clip.type]);
 
     // Blade Tool Cut Logic
     const handleClipClick = (e: React.MouseEvent) => {
@@ -95,8 +96,9 @@ const TimelineClip = ({ trackId, clip }: { trackId: string, clip: Clip }) => {
             trimClip(trackId, clip.id, clip.startAtMs, leftDuration, (clip as any).sourceStartMs ?? 0);
 
             // Create right half as new clip
+            const { src: _src, ...clipWithoutLegacySrc } = clip as any;
             const rightClip = {
-                ...(clip as any),
+                ...clipWithoutLegacySrc,
                 id: uuidv4(),
                 startAtMs: splitPointMs,
                 durationMs: rightDuration,
@@ -152,7 +154,7 @@ const TimelineClip = ({ trackId, clip }: { trackId: string, clip: Clip }) => {
                     className="absolute inset-0 pointer-events-none opacity-60"
                     style={{ 
                         transform: `translateX(-${((clip as any).sourceStartMs ?? 0) / 1000 * PIXELS_PER_SECOND}px)`,
-                        width: `${(((clip as any).durationMs + ((clip as any).sourceStartMs ?? 0)) / 1000) * PIXELS_PER_SECOND}px` 
+                        width: `${(((clip as any).durationMs + ((clip as any).sourceStartMs ?? 0)) / 1000) * PIXELS_PER_SECOND}px`
                     }} 
                 />
             )}
@@ -254,8 +256,10 @@ export const Timeline = () => {
 
     const playheadLeft = `${(playheadMs / 1000) * PIXELS_PER_SECOND}px`;
 
-    // Separate Video and Audio tracks
+    // Separate tracks by role so captions/effects stay visible in the same timeline surface.
     const videoTracks = project.tracks.filter(t => t.type.startsWith('video'));
+    const textTracks = project.tracks.filter(t => t.type === 'text');
+    const effectTracks = project.tracks.filter(t => t.type === 'effect');
     const audioTracks = project.tracks.filter(t => t.type === 'audio');
 
     return (
@@ -291,6 +295,20 @@ export const Timeline = () => {
                 {/* Bluma-style subtle Central Divider */}
                 <div className="h-4 w-full flex items-center justify-center opacity-30">
                      <div className="h-px w-full bg-[#333]" />
+                </div>
+
+                {/* Text / Caption Tracks */}
+                <div className="flex flex-col">
+                    {textTracks.map(track => (
+                        <TimelineTrack key={track.id} track={track} />
+                    ))}
+                </div>
+
+                {/* Effect Tracks */}
+                <div className="flex flex-col">
+                    {effectTracks.map(track => (
+                        <TimelineTrack key={track.id} track={track} />
+                    ))}
                 </div>
 
                 {/* Audio Tracks (Bottom) */}

@@ -1,23 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { renderQueue } from '@/lib/queue';
 import { ProjectSchema } from '@video-editor/timeline-schema';
+import { queueRenderProject, toRenderJobDto } from '@/lib/render-jobs';
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
 
-        // Validate the incoming project against out universal schema
-        const project = ProjectSchema.parse(body);
+        if (!body?.project) {
+            return NextResponse.json(
+                { success: false, error: 'Missing project payload' },
+                { status: 400 }
+            );
+        }
 
-        // Add the job to the BullMQ queue
-        const job = await renderQueue.add('render-project', project, {
-            jobId: project.id, // Ensure idempotency or easy tracking
+        const project = ProjectSchema.parse(body.project);
+        const { job, renderJobId, queued } = await queueRenderProject({
+            project,
+            renderJobId: typeof body.renderJobId === "string" ? body.renderJobId : undefined,
         });
 
-        return NextResponse.json({ 
-            success: true, 
-            message: 'Render job queued successfully',
-            jobId: job.id
+        return NextResponse.json({
+            success: true,
+            message: queued ? 'Render job queued successfully' : 'Render job already exists',
+            jobId: renderJobId,
+            job: toRenderJobDto(job),
         });
 
     } catch (error: any) {

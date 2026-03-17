@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
-import { ProjectSchema } from '@video-editor/timeline-schema';
+import {
+    ProjectSchema,
+    ProjectTimelineDbRowSchema,
+    ensureDefaultTracks,
+    projectTimelineDbRowToProject,
+    projectToProjectTimelineDbRow,
+} from '@video-editor/timeline-schema';
 
 /**
- * GET /api/project-assets?projectId=xxx
+ * GET /api/project-timeline?projectId=xxx
  * Returns the saved timeline JSON for a project.
  */
 export async function GET(request: NextRequest) {
@@ -14,8 +20,8 @@ export async function GET(request: NextRequest) {
 
     const supabase = createAdminClient();
     const { data, error } = await supabase
-        .from('project_timeline' as any)
-        .select('timeline_json')
+        .from('project_timeline')
+        .select('project_id, timeline_json, updated_at')
         .eq('project_id', projectId)
         .single();
 
@@ -23,11 +29,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ ok: false, error: 'Timeline not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ ok: true, timeline: (data as any).timeline_json });
+    const parsedRow = ProjectTimelineDbRowSchema.safeParse(data);
+    if (!parsedRow.success) {
+        return NextResponse.json({ ok: false, error: 'Corrupt timeline payload' }, { status: 500 });
+    }
+
+    const timeline = ensureDefaultTracks(projectTimelineDbRowToProject(parsedRow.data));
+    return NextResponse.json({ ok: true, timeline });
 }
 
 /**
- * POST /api/project-assets
+ * POST /api/project-timeline
  * Body: { projectId: string, timeline: Project }
  * Upserts the timeline JSON to the DB.
  */
@@ -37,7 +49,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Missing projectId or timeline' }, { status: 400 });
     }
 
-    // Validate against the universal schema before saving
     const parsed = ProjectSchema.safeParse(body.timeline);
     if (!parsed.success) {
         return NextResponse.json(
@@ -45,12 +56,18 @@ export async function POST(request: NextRequest) {
             { status: 400 }
         );
     }
+    const normalizedTimeline = ensureDefaultTracks(parsed.data);
+    const timelineRow = projectToProjectTimelineDbRow(
+        body.projectId,
+        normalizedTimeline,
+        new Date().toISOString()
+    );
 
     const supabase = createAdminClient();
     const { error } = await supabase
-        .from('project_timeline' as any)
+        .from('project_timeline')
         .upsert(
-            { project_id: body.projectId, timeline_json: parsed.data, updated_at: new Date().toISOString() },
+            timelineRow as unknown as { project_id: string; timeline_json: Record<string, unknown>; updated_at: string },
             { onConflict: 'project_id' }
         );
 

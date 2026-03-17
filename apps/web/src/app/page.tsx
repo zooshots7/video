@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServerClient } from "@/lib/supabase";
 import { ProjectCard } from "@/components/ProjectCard";
+import type { DashboardProject } from "@video-editor/shared";
 
 const statusBadge: Record<string, string> = {
     draft: "bg-surface-border/50 text-slate-400",
@@ -9,7 +10,7 @@ const statusBadge: Record<string, string> = {
     failed: "bg-red-500/15 text-red-400 border border-red-500/20",
 };
 
-async function getProjects() {
+async function getProjects(): Promise<DashboardProject[]> {
     try {
         const supabase = createServerClient();
         const { data, error } = await supabase
@@ -17,7 +18,7 @@ async function getProjects() {
             .select("*")
             .order("created_at", { ascending: false });
         if (error) throw error;
-        return data ?? [];
+        return (data ?? []) as DashboardProject[];
     } catch {
         return [];
     }

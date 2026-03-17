@@ -542,6 +542,23 @@ export interface Database {
                     completed_at?: string | null;
                 };
             };
+            project_timeline: {
+                Row: {
+                    project_id: string;
+                    timeline_json: Record<string, unknown>;
+                    updated_at: string;
+                };
+                Insert: {
+                    project_id: string;
+                    timeline_json: Record<string, unknown>;
+                    updated_at?: string;
+                };
+                Relationships: [];
+                Update: {
+                    timeline_json?: Record<string, unknown>;
+                    updated_at?: string;
+                };
+            };
         };
         Views: {
             [_ in never]: never;
@@ -570,5 +587,6 @@ export type DbTranscript = Database["public"]["Tables"]["transcripts"]["Row"];
 export type DbTranscriptWord = Database["public"]["Tables"]["transcript_words"]["Row"];
 export type DbRenderJob = Database["public"]["Tables"]["render_jobs"]["Row"];
 export type DbProjectAsset = Database["public"]["Tables"]["project_assets"]["Row"];
+export type DbProjectTimeline = Database["public"]["Tables"]["project_timeline"]["Row"];
 export type DbAssetCategory = Database["public"]["Tables"]["asset_categories"]["Row"];
 export type DbAssetTag = Database["public"]["Tables"]["asset_tags"]["Row"];
